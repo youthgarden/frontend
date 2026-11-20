@@ -104,6 +104,51 @@ async function waitFor(conn, pred, ms = 3000) {
     }
 }
 
+// ── 두 영역 채점 (명세 6·7·9절) ──
+
+/** 명세 9절의 식으로 결과 응답의 점수에서 영역과 통과를 다시 계산해, 응답의 dimensions·passed와 같은지 본다 */
+function dualConsistent(rb) {
+    const req = rb?.pass_requirements;
+    if (!rb || rb.status !== 'GRADED' || req?.version !== 'DUAL_V1' || !Array.isArray(rb.scores) || !Array.isArray(rb.dimensions) || !Array.isArray(rb.required_checks)) return false;
+    const by = (d, f) => rb.scores.filter((s) => s.dimension === d).reduce((sum, s) => sum + f(s), 0);
+    const verify = rb.scores.find((s) => s.criterion === 'VERIFY')?.score;
+    const allMet = rb.required_checks.every((c) => c.met === true);
+    const task = { score: by('TASK_SOLUTION', (s) => s.score), max: by('TASK_SOLUTION', (s) => s.max_score) };
+    const ai = { score: by('AI_USE', (s) => s.score), max: by('AI_USE', (s) => s.max_score) };
+    const taskPassed = task.score >= req.task_solution_min_score && allMet;
+    const aiPassed = ai.score >= req.ai_use_min_score && verify >= req.verify_min_score;
+    const [d1, d2] = rb.dimensions;
+    return rb.dimensions.length === 2
+        && d1.code === 'TASK_SOLUTION' && d1.score === task.score && d1.max_score === task.max && d1.min_score === req.task_solution_min_score && d1.passed === taskPassed && typeof d1.name === 'string'
+        && d2.code === 'AI_USE' && d2.score === ai.score && d2.max_score === ai.max && d2.min_score === req.ai_use_min_score && d2.passed === aiPassed && typeof d2.name === 'string'
+        && rb.passed === (taskPassed && aiPassed)
+        && rb.total_score === rb.scores.reduce((s, x) => s + x.score, 0)
+        && JSON.stringify(rb.required_checks.map((c) => c.check_id)) === JSON.stringify(req.required_checks.map((c) => c.check_id));
+}
+
+const dim = (rb, code) => rb?.dimensions?.find((d) => d.code === code);
+const scoreOf = (rb, c) => rb?.scores?.find((s) => s.criterion === c);
+/** 응답 어디에도 필수 요건의 판정 규칙(rule)이 나오지 않는다 */
+const noRule = (body) => !JSON.stringify(body ?? null).includes('"rule"');
+
+/** 공개 평가 기준의 모양: 항목 4개(영역·배점), 배점 합 100, 두 영역 기준의 최소 점수와 필수 요건(check_id, label만) */
+function publicCriteriaOk(criteria, req) {
+    if (!Array.isArray(criteria) || criteria.length !== 4) return false;
+    const dims = Object.fromEntries(criteria.map((c) => [c.code, c.dimension]));
+    const total = criteria.reduce((s, c) => s + c.max_score, 0);
+    const max = (d) => criteria.filter((c) => c.dimension === d).reduce((s, c) => s + c.max_score, 0);
+    return dims.RESULT === 'TASK_SOLUTION' && dims.PROMPT === 'AI_USE' && dims.VERIFY === 'AI_USE' && dims.IMPROVE === 'AI_USE'
+        && criteria.every((c) => typeof c.name === 'string' && Number.isInteger(c.max_score))
+        && total === 100
+        && req?.version === 'DUAL_V1'
+        && req.task_solution_min_score > 0 && req.task_solution_min_score <= max('TASK_SOLUTION')
+        && req.ai_use_min_score > 0 && req.ai_use_min_score <= max('AI_USE')
+        && req.verify_min_score > 0 && req.verify_min_score <= criteria.find((c) => c.code === 'VERIFY').max_score
+        && Array.isArray(req.required_checks) && req.required_checks.length >= 1
+        && req.required_checks.every((c) => typeof c.check_id === 'string' && typeof c.label === 'string' && c.label.length > 0 && Object.keys(c).sort().join() === 'check_id,label')
+        && new Set(req.required_checks.map((c) => c.check_id)).size === req.required_checks.length;
+}
+
 async function pollResult(id, token, until = (b) => b.status !== 'GRADING', ms = 15000) {
     const end = Date.now() + ms;
     while (Date.now() < end) {
@@ -203,16 +248,28 @@ async function main() {
     const tasks = await call('GET', '/tasks', { token });
     check('과제 목록 5개, 과제 1 available', tasks.status === 200 && tasks.body?.length === 5 && tasks.body[0].available === true && tasks.body[1].available === false && tasks.body[0].best_score === null, tasks.body);
     const t1 = await call('GET', '/tasks/1', { token });
-    check('과제 1 안내 (자료 3개, 평가 항목 4개, 통과 80)', t1.status === 200 && t1.body?.materials?.length === 3 && t1.body?.criteria?.length === 4 && t1.body?.pass_score === 80 && !('content' in (t1.body?.materials?.[0] ?? {})), t1.body);
+    check('과제 1 안내 (자료 3개 제목만, 평가 항목 4개)', t1.status === 200 && t1.body?.materials?.length === 3 && t1.body?.criteria?.length === 4 && !('content' in (t1.body?.materials?.[0] ?? {})) && !('pass_score' in (t1.body ?? {})), t1.body);
+    check('과제 1 안내의 criteria(영역·배점)와 pass_requirements(두 영역 기준, 필수 요건)', publicCriteriaOk(t1.body?.criteria, t1.body?.pass_requirements), t1.body && { criteria: t1.body.criteria, pass_requirements: t1.body.pass_requirements });
+    check('과제 1의 필수 요건은 명세 예시의 SHIPPING_DATE, 판정 규칙(rule)은 내보내지 않음',
+        t1.body?.pass_requirements?.required_checks?.[0]?.check_id === 'SHIPPING_DATE'
+        && t1.body.pass_requirements.required_checks[0].label === '확정 선적일을 정확히 안내하고 미확정 일정을 확정처럼 약속하지 않기'
+        && noRule(t1.body), t1.body?.pass_requirements);
     const none = await call('GET', '/attempts/current', { token });
     check('풀던 시험 없음 204', none.status === 204, none);
     const start = await call('POST', '/attempts', { token, body: { task_id: 1 } });
     check('시험 시작 201 (remaining_sec ≈ 1800, 자료 본문 포함)', start.status === 201 && start.body?.status === 'IN_PROGRESS' && start.body?.remaining_sec >= 1795 && start.body?.remaining_sec <= 1800 && typeof start.body?.task?.materials?.[0]?.content === 'string' && /Z$/.test(start.body?.deadline_at ?? ''), start.body);
+    check('시험 시작 응답의 task에 공개 평가 기준 (과제 안내와 같은 criteria·pass_requirements, rule 없음)',
+        JSON.stringify(start.body?.task?.criteria) === JSON.stringify(t1.body?.criteria)
+        && JSON.stringify(start.body?.task?.pass_requirements) === JSON.stringify(t1.body?.pass_requirements)
+        && noRule(start.body), start.body?.task && { criteria: start.body.task.criteria, pass_requirements: start.body.task.pass_requirements });
     const attemptId = start.body?.id;
     const again = await call('POST', '/attempts', { token, body: { task_id: 1 } });
     check('중복 시작 409 ATTEMPT_ALREADY_IN_PROGRESS', again.status === 409 && code(again) === 'ATTEMPT_ALREADY_IN_PROGRESS', again);
     const cur = await call('GET', '/attempts/current', { token });
     check('GET /attempts/current 200 IN_PROGRESS (answer 포함)', cur.status === 200 && cur.body?.id === attemptId && cur.body?.status === 'IN_PROGRESS' && cur.body?.answer === '', cur.body);
+    check('이어 풀기 응답의 task에 응시 스냅샷의 공개 평가 기준 (시작 때와 같음)',
+        JSON.stringify(cur.body?.task?.criteria) === JSON.stringify(start.body?.task?.criteria)
+        && JSON.stringify(cur.body?.task?.pass_requirements) === JSON.stringify(start.body?.task?.pass_requirements), cur.body?.task);
 
     section('AI 대화와 답안');
     const m1 = await call('POST', `/attempts/${attemptId}/messages`, { token, body: { content: '너는 해외영업 담당자야. 바이어 메일과 선적 일정을 항목별로 요약해 줘.' } });
@@ -247,11 +304,26 @@ async function main() {
     check('제출 뒤 대화 409', msgAfter.status === 409, msgAfter);
     const grading = await call('GET', `/attempts/${attemptId}`, { token });
     check('채점 중에는 점수 null', grading.status === 200 && grading.body?.status === 'GRADING' && grading.body?.total_score === null && grading.body?.first_view === false, grading.body);
+    const gb = grading.body;
+    check('채점 중에는 scores·passed·dimensions·required_checks·summary_feedback도 null, pass_requirements는 있음',
+        ['scores', 'total_score', 'passed', 'dimensions', 'required_checks', 'summary_feedback'].every((k) => k in (gb ?? {}) && gb[k] === null)
+        && JSON.stringify(gb?.pass_requirements) === JSON.stringify(start.body?.task?.pass_requirements), gb);
     const result = await pollResult(attemptId, token);
     const rb = result?.body;
     check('채점 완료까지 폴링 → GRADED', rb?.status === 'GRADED', rb);
-    check('통과 (80점 이상), 항목 4개', rb?.passed === true && rb?.total_score >= 80 && rb?.scores?.length === 4 && rb.scores.reduce((s, x) => s + x.score, 0) === rb.total_score, rb);
+    check('통과, 항목 4개 (영역·배점이 시작 때의 criteria와 같고, 총점은 네 점수의 합)',
+        rb?.passed === true && rb?.scores?.length === 4
+        && JSON.stringify(rb.scores.map((s) => [s.criterion, s.name, s.dimension, s.max_score])) === JSON.stringify(start.body?.task?.criteria?.map((c) => [c.code, c.name, c.dimension, c.max_score]))
+        && rb.scores.reduce((s, x) => s + x.score, 0) === rb.total_score, rb);
+    check('통과한 결과는 두 영역 모두 충족 (점수 ≥ 최소 점수, 필수 요건 모두 충족, 검증 ≥ 검증 최소 점수)',
+        dualConsistent(rb) && rb.dimensions.every((d) => d.passed && d.score >= d.min_score) && rb.required_checks.every((c) => c.met && c.feedback.length > 0)
+        && scoreOf(rb, 'VERIFY').score >= rb.pass_requirements.verify_min_score, rb && { dimensions: rb.dimensions, required_checks: rb.required_checks, scores: rb.scores?.map((s) => [s.criterion, s.score]) });
     check('항목별 피드백과 근거 메시지', rb?.scores?.every((s) => typeof s.feedback === 'string' && s.feedback.length > 0) && rb.scores.some((s) => typeof s.evidence_message_id === 'number'), rb?.scores);
+    const msgsAfter = await call('GET', `/attempts/${attemptId}/messages`, { token });
+    const verifyItem = scoreOf(rb, 'VERIFY');
+    check('답변 검증이 양수면 근거는 이 응시의 사용자 질문이고, 피드백에 대조한 자료(선적 일정표)가 나온다',
+        verifyItem?.score > 0 && msgsAfter.body?.find((m) => m.id === verifyItem.evidence_message_id)?.role === 'USER' && verifyItem.feedback.includes('선적 일정표'), verifyItem);
+    check('결과 응답에 판정 규칙(rule)이 없음', noRule(rb), null);
     check('레벨 상승 (level_up Lv.2)과 first_view true', rb?.level_up?.leveled_up === true && rb?.level_up?.level === 2 && rb?.first_view === true, { level_up: rb?.level_up, first_view: rb?.first_view });
     const again2 = await call('GET', `/attempts/${attemptId}`, { token });
     check('두 번째 조회는 first_view false', again2.body?.first_view === false, again2.body?.first_view);
@@ -318,6 +390,93 @@ async function main() {
     check('재채점 202 GRADING', regrade.status === 202 && regrade.body?.status === 'GRADING', regrade);
     const regraded = await pollResult(a3, token);
     check('재채점 완료 GRADED', regraded?.body?.status === 'GRADED' && typeof regraded?.body?.total_score === 'number', regraded?.body?.status);
+    check('재채점 결과도 응시의 기준으로 두 영역 판정 (dimensions, required_checks)', dualConsistent(regraded?.body), regraded?.body && { dimensions: regraded.body.dimensions, required_checks: regraded.body.required_checks });
+
+    section('두 영역 판정 (검수용 미달 종류와 실제 규칙)');
+    const badReason = await call('POST', '/__mock__/next-grade', { token, body: { result: 'fail', reason: 'nope' } });
+    check('없는 미달 종류 422', badReason.status === 422, badReason.body);
+    const reasonOnPass = await call('POST', '/__mock__/next-grade', { token, body: { result: 'pass', reason: 'verify_min' } });
+    check('통과 지정에 미달 종류를 붙이면 422', reasonOnPass.status === 422, reasonOnPass.body);
+    const plainFail = await call('POST', '/__mock__/next-grade', { token, body: { result: 'fail' } });
+    const stateFail = await call('GET', '/__mock__/state', { token });
+    check('기존 호출 {"result":"fail"}은 그대로 200', plainFail.status === 200 && stateFail.body?.next_grade === 'fail' && stateFail.body?.next_grade_reason === null, [plainFail.body, stateFail.body]);
+    await call('POST', '/__mock__/next-grade', { token, body: { result: null } });
+
+    /** 새 계정 하나로 과제 1을 풀고 채점 결과를 받는다. forced가 있으면 다음 채점 결과를 지정한다 */
+    async function solveTask1(tag, { forced, prompts, answer: ans }) {
+        const id = `smoke_${tag}_${Date.now().toString(36)}`.slice(0, 30);
+        await call('POST', '/auth/signup', { body: { login_id: id, password: 'password1234', nickname: '검사봇', job_id: 1 } });
+        const tk = (await call('POST', '/auth/login', { body: { login_id: id, password: 'password1234' } })).body?.access_token;
+        await call('POST', '/__mock__/lectures/1/complete', { token: tk });
+        if (forced) await call('POST', '/__mock__/next-grade', { token: tk, body: forced });
+        const st = await call('POST', '/attempts', { token: tk, body: { task_id: 1 } });
+        for (const q of prompts) await call('POST', `/attempts/${st.body?.id}/messages`, { token: tk, body: { content: q } });
+        await call('PUT', `/attempts/${st.body?.id}/answer`, { token: tk, body: { content: ans } });
+        await call('POST', `/attempts/${st.body?.id}/submit`, { token: tk, body: { answer: ans } });
+        return (await pollResult(st.body?.id, tk))?.body;
+    }
+    // 잘 푼 응시: 틀린 일정을 짚어 바로잡고, 자료대로 쓴 답안
+    const goodPrompts = [
+        '너는 해외영업 담당자야. 바이어 메일과 선적 일정을 항목별로 요약해 줘.',
+        '선적 일정표와 대조해 보니 날짜가 다른 것 같아. 맞는지 확인해 줘.',
+    ];
+    const [fTask, fCheck, fAi, fVerify, natural] = await Promise.all([
+        solveTask1('ts', { forced: { result: 'fail', reason: 'task_score' }, prompts: goodPrompts, answer }),
+        solveTask1('rc', { forced: { result: 'fail', reason: 'required_check' }, prompts: goodPrompts, answer }),
+        solveTask1('ai', { forced: { result: 'fail', reason: 'ai_score' }, prompts: goodPrompts, answer }),
+        solveTask1('vm', { forced: { result: 'fail', reason: 'verify_min' }, prompts: goodPrompts, answer }),
+        // 지정 없이 실제 규칙으로: AI가 섞은 틀린 일정(11월 21일)을 짚지 않고 그대로 쓴 답안
+        solveTask1('nat', {
+            prompts: ['너는 해외영업 담당자야. 바이어에게 보낼 영문 회신 메일 초안을 써 줘.'],
+            answer: 'Dear Mr. Carter,\n\nWe apologize for the delay caused by our raw material supplier. The goods will depart Busan on November 21 and arrive in Los Angeles on December 6. We will compensate 0.5% (USD 240) under Article 9.\n\nSincerely,\nHaneul Kim',
+        }),
+    ]);
+    const req = (rb2) => rb2?.pass_requirements;
+    const brief = (rb2) => rb2 && { total: rb2.total_score, passed: rb2.passed, dimensions: rb2.dimensions, required_checks: rb2.required_checks, scores: rb2.scores?.map((s) => [s.criterion, s.score, s.evidence_message_id]) };
+    check('미달(실무 과제 해결 점수): 결과물 < 최소 점수, AI 활용 역량은 충족, 미통과',
+        dualConsistent(fTask) && fTask.passed === false && dim(fTask, 'TASK_SOLUTION').score < req(fTask).task_solution_min_score && fTask.required_checks.every((c) => c.met) && dim(fTask, 'AI_USE').passed, brief(fTask));
+    check('필수 요건 미충족이면 결과물 점수가 최소 점수 이상이어도 미통과',
+        dualConsistent(fCheck) && fCheck.passed === false && fCheck.required_checks.some((c) => !c.met) && dim(fCheck, 'TASK_SOLUTION').score >= req(fCheck).task_solution_min_score
+        && dim(fCheck, 'TASK_SOLUTION').passed === false && dim(fCheck, 'AI_USE').passed, brief(fCheck));
+    check('미달(AI 활용 역량 점수): 영역 점수 < 최소 점수, 검증은 최소 점수 이상, 미통과',
+        dualConsistent(fAi) && fAi.passed === false && dim(fAi, 'AI_USE').score < req(fAi).ai_use_min_score && scoreOf(fAi, 'VERIFY').score >= req(fAi).verify_min_score && dim(fAi, 'TASK_SOLUTION').passed, brief(fAi));
+    check('총점이 80점 이상이어도 답변 검증이 검증 최소 점수 미만이면 미통과 (AI 활용 역량 점수는 충족)',
+        dualConsistent(fVerify) && fVerify.passed === false && fVerify.total_score >= 80
+        && scoreOf(fVerify, 'VERIFY').score < req(fVerify).verify_min_score && dim(fVerify, 'AI_USE').score >= req(fVerify).ai_use_min_score
+        && dim(fVerify, 'AI_USE').passed === false && dim(fVerify, 'TASK_SOLUTION').passed, brief(fVerify));
+    check('지정한 미달에서도 답변 검증이 양수면 근거 대화가 있음',
+        [fTask, fCheck, fAi, fVerify].every((r) => scoreOf(r, 'VERIFY')?.score === 0 || typeof scoreOf(r, 'VERIFY')?.evidence_message_id === 'number'), [fTask, fCheck, fAi, fVerify].map((r) => scoreOf(r, 'VERIFY')));
+    check('실제 규칙: 틀린 일정을 그대로 쓰면 필수 요건(SHIPPING_DATE) 미충족과 그 근거, 미통과',
+        dualConsistent(natural) && natural.passed === false
+        && natural.required_checks.find((c) => c.check_id === 'SHIPPING_DATE')?.met === false && /11월 21일/.test(natural.required_checks[0].feedback), brief(natural));
+    check('실제 규칙: 자료와 대조한 기록이 없으면 답변 검증 0점이고 근거 대화 없음',
+        scoreOf(natural, 'VERIFY')?.score === 0 && scoreOf(natural, 'VERIFY')?.evidence_message_id === null, scoreOf(natural, 'VERIFY'));
+
+    section('예전 기준(LEGACY_TOTAL_V1)의 응시');
+    const sy = await call('POST', '/auth/login', { body: { login_id: 'seoyeon02', password: 'password1234' } });
+    const syToken = sy.body?.access_token;
+    const syList = await call('GET', '/attempts', { token: syToken });
+    const syDetails = await Promise.all((syList.body?.items ?? []).map((it) => call('GET', `/attempts/${it.id}`, { token: syToken })));
+    const legacy = syDetails.map((r) => r.body).filter((b) => b?.pass_requirements?.version === 'LEGACY_TOTAL_V1');
+    check('seoyeon02의 지난 결과에 예전 기준 응시가 있음', legacy.length >= 1, syDetails.map((r) => r.body?.pass_requirements?.version));
+    check('예전 기준 결과: pass_requirements는 version과 min_total_score만, dimensions·required_checks는 null',
+        legacy.length >= 1 && legacy.every((b) => Object.keys(b.pass_requirements).sort().join() === 'min_total_score,version' && b.dimensions === null && b.required_checks === null), legacy.map((b) => b.pass_requirements));
+    check('예전 기준 결과: 항목별 배점 25점, 통과는 총점 ≥ min_total_score',
+        legacy.length >= 1 && legacy.every((b) => b.scores?.length === 4 && b.scores.every((s) => s.max_score === 25 && s.score <= 25)
+            && b.passed === (b.total_score >= b.pass_requirements.min_total_score)), legacy.map((b) => [b.total_score, b.passed]));
+    check('예전 기준 결과에 통과와 미달이 모두 있음 (화면 검수용)', legacy.some((b) => b.passed) && legacy.some((b) => !b.passed), legacy.map((b) => b.passed));
+    const syDual = syDetails.map((r) => r.body).filter((b) => b?.pass_requirements?.version === 'DUAL_V1');
+    check('seoyeon02의 두 영역 기준 결과는 식과 일치하고, 과제 3은 미달', syDual.length >= 1 && syDual.every(dualConsistent) && syDual.some((b) => b.task.id === 3 && b.passed === false), syDual.map(brief));
+
+    section('다섯 과제의 공개 평가 기준');
+    const jh = await call('POST', '/auth/login', { body: { login_id: 'jeonghun04', password: 'password1234' } });
+    const jhTasks = await call('GET', '/tasks', { token: jh.body?.access_token });
+    const details = await Promise.all((jhTasks.body ?? []).map((t) => call('GET', `/tasks/${t.id}`, { token: jh.body?.access_token })));
+    check('과제 5개 모두 criteria·pass_requirements가 두 영역 기준이고 필수 요건이 하나 이상, rule 없음',
+        details.length === 5 && details.every((d) => d.status === 200 && publicCriteriaOk(d.body?.criteria, d.body?.pass_requirements) && noRule(d.body)),
+        details.map((d) => d.body?.pass_requirements));
+    check('필수 요건의 check_id는 과제 안에서 유일하고 과제마다 다름', new Set(details.flatMap((d) => d.body?.pass_requirements?.required_checks?.map((c) => c.check_id) ?? [])).size
+        === details.reduce((s, d) => s + (d.body?.pass_requirements?.required_checks?.length ?? 0), 0), details.map((d) => d.body?.pass_requirements?.required_checks));
 
     section('WebSocket');
     const silent = await openWs();

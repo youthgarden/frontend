@@ -5,19 +5,21 @@ import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type {
     AttemptInProgress, AttemptList, AttemptListItem, AttemptPendingResult, AttemptResult, AttemptTask, ChatMessage,
-    LectureDashboard, LectureDetail, LectureSummary, Me, ProgressResponse, ScoreItem, SendMessageResponse, SignupResponse,
-    TaskDetail, TaskSummary, TokenResponse,
+    Criterion as PublicCriterion, LectureDashboard, LectureDetail, LectureSummary, Me, PassRequirements, ProgressResponse,
+    RequiredCheckResult, ScoreItem, SendMessageResponse, SignupResponse, TaskDetail, TaskSummary, TokenResponse,
 } from '../src/api/types';
 import { chatReply } from './ai';
 import {
     clearRefreshCookie, findRefresh, forceExpire, hashPassword, issueRefresh, parseCookies, refreshCookie, signAccess,
     verifyAccess, verifyPassword, REFRESH_COOKIE,
 } from './auth';
-import { CRITERIA, JOBS, LECTURES, PASS_SCORE, TASKS, findLecture, findTask, type LectureDef, type TaskDef } from './content';
-import { grade } from './grader';
+import { CRITERIA, DIMENSIONS, JOBS, LECTURES, TASKS, findLecture, findTask, type LectureDef, type TaskDef } from './content';
+import { decide, grade, type Forced } from './grader';
 import { Check, HttpError, ValidationError, fail, iso, pathId, readJson, writeReply, type Reply } from './http';
 import { SEED_ACCOUNTS, SEED_PASSWORD, buildSeed } from './seed';
-import { Store, type AttemptRow, type ForcedGrade, type MessageRow, type UserRow } from './store';
+import {
+    FAIL_REASONS, Store, type AttemptRow, type FailReason, type ForcedGrade, type GradingRubric, type MessageRow, type UserRow,
+} from './store';
 import { MapHub } from './ws';
 
 export const API_PREFIX = '/api/v1';
@@ -226,8 +228,34 @@ export class MockApp {
         return Math.max(0, Math.ceil((a.deadline_at - Date.now()) / 1000));
     }
 
-    private attemptTask(t: TaskDef): AttemptTask {
-        return { id: t.id, title: t.title, situation: t.situation, instruction: t.instruction, materials: t.materials.map((m) => ({ ...m })) };
+    /** 채점 기준의 항목별 소속 영역과 배점 (명세 6절 criteria) */
+    private publicCriteria(rubric: GradingRubric): PublicCriterion[] {
+        return CRITERIA.map((c) => ({ code: c.code, name: c.name, dimension: c.dimension, max_score: rubric.criterion_max_scores[c.code] }));
+    }
+
+    /** 채점 기준의 공개 부분. 필수 요건의 판정 규칙(rule)은 내보내지 않는다 */
+    private publicRequirements(rubric: GradingRubric): PassRequirements {
+        if (rubric.version === 'LEGACY_TOTAL_V1') return { version: rubric.version, min_total_score: rubric.min_total_score };
+        return {
+            version: rubric.version,
+            task_solution_min_score: rubric.task_solution_min_score,
+            ai_use_min_score: rubric.ai_use_min_score,
+            verify_min_score: rubric.verify_min_score,
+            required_checks: rubric.required_checks.map((c) => ({ check_id: c.check_id, label: c.label })),
+        };
+    }
+
+    /** 응시 화면용 과제. 평가 기준은 응시의 스냅샷에서 가져온다 */
+    private attemptTask(t: TaskDef, rubric: GradingRubric): AttemptTask {
+        return {
+            id: t.id,
+            title: t.title,
+            situation: t.situation,
+            instruction: t.instruction,
+            materials: t.materials.map((m) => ({ ...m })),
+            criteria: this.publicCriteria(rubric),
+            pass_requirements: this.publicRequirements(rubric),
+        };
     }
 
     private inProgressBody(a: AttemptRow, withAnswer: boolean): AttemptInProgress {
@@ -237,7 +265,7 @@ export class MockApp {
             started_at: iso(a.started_at),
             deadline_at: iso(a.deadline_at),
             remaining_sec: this.remainingSec(a),
-            task: this.attemptTask(findTask(a.task_id)!),
+            task: this.attemptTask(findTask(a.task_id)!, a.grading_rubric_snapshot),
         };
         if (withAnswer) body.answer = this.lastAnswer(a);
         return body;
@@ -272,20 +300,25 @@ export class MockApp {
         const a = s.data.attempts.find((x) => x.id === attemptId);
         if (!a || a.status !== 'GRADING') return;
         const flags = s.flags(a.user_id);
-        const forced = flags.next_grade;
+        const forcedGrade = flags.next_grade;
+        const reason = flags.next_grade_reason;
         delete flags.next_grade;
+        delete flags.next_grade_reason;
         try {
-            if (forced === 'error') throw new Error('검수용으로 채점 실패를 지정했어요');
+            if (forcedGrade === 'error') throw new Error('검수용으로 채점 실패를 지정했어요');
+            const forced: Forced | undefined = forcedGrade === 'pass'
+                ? { result: 'pass' }
+                : forcedGrade === 'fail' ? { result: 'fail', reason } : undefined;
             const task = findTask(a.task_id)!;
-            const input = { task, answer: a.answer ?? '', messages: s.messagesOf(a.id), attempt: a };
-            const raw = grade(input);
-            let target: number | undefined;
-            if (forced === 'pass' && raw.total < PASS_SCORE) target = Math.round(rand(82, 90));
-            if (forced === 'fail' && raw.total >= PASS_SCORE) target = Math.round(rand(58, 72));
-            const g = target === undefined ? raw : grade(input, target);
+            // 명세 9절: 응시의 채점 기준 스냅샷으로 채점한다 (과제의 기준이 그사이 바뀌어도 응시할 때의 기준)
+            const g = grade(
+                { task, rubric: a.grading_rubric_snapshot, answer: a.answer ?? '', messages: s.messagesOf(a.id), attempt: a },
+                { forced },
+            );
             a.scores = g.scores;
+            a.required_check_results = g.checks;
             a.total_score = g.total;
-            a.passed = g.total >= PASS_SCORE;
+            a.passed = g.passed;
             a.summary_feedback = g.summary;
             a.status = 'GRADED';
             // 명세 9절 5: level = min(1 + 통과한 서로 다른 과제 수, 6)
@@ -309,19 +342,40 @@ export class MockApp {
         const task = findTask(a.task_id)!;
         const graded = a.status === 'GRADED';
         const lecture = findLecture(task.lecture_id);
-        const scores: ScoreItem[] = graded
+        const rubric = a.grading_rubric_snapshot;
+        // 명세 7절: GRADED가 되기 전에는 점수와 판정에 관한 필드가 모두 null
+        const scores: ScoreItem[] | null = graded
             ? CRITERIA.map((c) => {
                 const s = a.scores.find((x) => x.criterion === c.code);
                 return {
                     criterion: c.code,
                     name: c.name,
+                    dimension: c.dimension,
                     score: s?.score ?? 0,
-                    max_score: c.max_score,
+                    max_score: rubric.criterion_max_scores[c.code],
                     feedback: s?.feedback ?? '',
                     evidence_message_id: s?.evidence_message_id ?? null,
                 };
             })
-            : [];
+            : null;
+        let dimensions: AttemptResult['dimensions'] = null;
+        let requiredChecks: RequiredCheckResult[] | null = null;
+        if (graded && rubric.version === 'DUAL_V1') {
+            const results = a.required_check_results ?? [];
+            // 영역별 점수와 충족 여부는 저장한 항목별 점수, 스냅샷, 필수 요건 판정으로 계산한다 (ERD attempt_score)
+            dimensions = decide(rubric, a.scores, results).dimensions!.map((d) => ({
+                code: d.code,
+                name: DIMENSIONS.find((x) => x.code === d.code)!.name,
+                score: d.score,
+                max_score: d.max_score,
+                min_score: d.min_score,
+                passed: d.passed,
+            }));
+            requiredChecks = rubric.required_checks.map((c) => {
+                const r = results.find((x) => x.check_id === c.check_id);
+                return { check_id: c.check_id, label: c.label, met: r?.met ?? false, feedback: r?.feedback ?? '' };
+            });
+        }
         return {
             id: a.id,
             status: a.status,
@@ -331,7 +385,9 @@ export class MockApp {
             answer: a.answer,
             total_score: graded ? a.total_score : null,
             passed: graded ? a.passed : null,
-            pass_score: PASS_SCORE,
+            pass_requirements: this.publicRequirements(rubric),
+            dimensions,
+            required_checks: requiredChecks,
             summary_feedback: graded ? a.summary_feedback : null,
             scores,
             recommended_lecture: lecture ? { id: lecture.id, title: lecture.title } : null,
@@ -552,8 +608,9 @@ export class MockApp {
                 instruction: t.instruction,
                 time_limit_min: t.time_limit_min,
                 materials: t.materials.map((m) => ({ id: m.id, title: m.title })),
-                criteria: CRITERIA.map((x) => ({ ...x })),
-                pass_score: PASS_SCORE,
+                // 응시 전 안내에는 과제의 현재 기준을 쓴다 (명세 6절)
+                criteria: this.publicCriteria(t.rubric),
+                pass_requirements: this.publicRequirements(t.rubric),
             };
             return { status: 200, body };
         });
@@ -579,6 +636,9 @@ export class MockApp {
                 deadline_at: now + t.time_limit_min * 60_000,
                 submitted_at: null,
                 answer: null,
+                // 명세 7절 POST /attempts 4: 과제의 채점 기준을 응시에 복사한다
+                grading_rubric_snapshot: structuredClone(t.rubric),
+                required_check_results: null,
                 total_score: null,
                 passed: null,
                 leveled_up: null,
@@ -803,6 +863,7 @@ export class MockApp {
                 body: {
                     user: { id: u.id, login_id: u.login_id, nickname: u.nickname, level: u.level },
                     next_grade: flags.next_grade ?? null,
+                    next_grade_reason: flags.next_grade_reason ?? null,
                     next_ai_failure: !!flags.next_ai_failure,
                     in_progress: running ? { id: running.id, task_id: running.task_id, remaining_sec: this.remainingSec(running) } : null,
                     access_ttl_sec: this.opt.accessTtlSec,
@@ -846,12 +907,20 @@ export class MockApp {
             const v = new Check(c.body, 'body');
             const raw = v.raw('result');
             const result = raw === null ? null : v.oneOf<ForcedGrade>('result', ['pass', 'fail', 'error']);
+            // 선택: "미달"의 종류. result가 fail일 때만 받는다
+            const rawReason = v.raw('reason');
+            const reason = rawReason === undefined || rawReason === null ? null : v.oneOf<FailReason>('reason', FAIL_REASONS);
+            if (reason && result !== 'fail') {
+                v.add({ field: 'reason', type: 'value_error', msg: 'Value error, reason is only allowed when result is fail', input: rawReason });
+            }
             v.done();
             const flags = this.store.flags(c.userId);
             if (result) flags.next_grade = result;
             else delete flags.next_grade;
+            if (reason) flags.next_grade_reason = reason;
+            else delete flags.next_grade_reason;
             this.store.touch();
-            return { status: 200, body: { next_grade: result } };
+            return { status: 200, body: { next_grade: result, reason } };
         }, 'none');
 
         this.add('POST', `${M}/next-ai-failure`, true, (c) => {

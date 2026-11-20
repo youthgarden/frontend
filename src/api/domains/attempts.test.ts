@@ -31,7 +31,9 @@ function fillCache(qc: QueryClient) {
 function result(over: Partial<AttemptResult> = {}): AttemptResult {
     return {
         id: 7, status: 'GRADED', task: { id: 1, title: '과제' }, started_at: '', submitted_at: '', answer: '',
-        total_score: 85, passed: true, pass_score: 80, summary_feedback: null, scores: [], recommended_lecture: null,
+        total_score: 85, passed: true, summary_feedback: null, scores: [], recommended_lecture: null,
+        pass_requirements: { version: 'DUAL_V1', task_solution_min_score: 40, ai_use_min_score: 40, verify_min_score: 12, required_checks: [] },
+        dimensions: [], required_checks: [],
         level_up: { leveled_up: true, level: 2 }, first_view: false, ...over,
     };
 }
