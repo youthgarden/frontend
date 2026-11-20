@@ -10,6 +10,8 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
     const target = env.API_TARGET?.trim();
     const useMock = !target;
+    // 단위 테스트(vitest)는 서버가 필요 없다. 모의 서버를 붙이면 타이머가 남아 테스트가 끝나지 않는다
+    const testing = !!process.env.VITEST;
 
     const proxy: Record<string, ProxyOptions> | undefined = target
         ? { '/api': { target, changeOrigin: true, ws: true } }
@@ -19,7 +21,7 @@ export default defineConfig(({ mode }) => {
         plugins: [
             react(),
             tailwindcss(),
-            ...(useMock ? [mockServer({ accessTtlSec: Number(env.MOCK_ACCESS_TTL_SEC) || undefined })] : []),
+            ...(useMock && !testing ? [mockServer({ accessTtlSec: Number(env.MOCK_ACCESS_TTL_SEC) || undefined })] : []),
         ],
         define: { __MOCK_API__: JSON.stringify(useMock) },
         server: { proxy },
