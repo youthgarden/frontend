@@ -31,7 +31,7 @@ export function formatTime(iso: string): string {
     return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-/** 서버의 UTC 시각을 사용자 지역 시각 "2026. 11. 20. 12:27"로 */
+/** 서버의 UTC 시각을 사용자 지역 시각 "2026년 11월 20일 12:27"로 */
 export function formatDateTime(iso: string): string {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '';

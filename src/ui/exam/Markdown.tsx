@@ -21,21 +21,44 @@ const RE_QUOTE = /^\s*>\s?/;
 const RE_HR = /^\s*([-*_])(\s*\1){2,}\s*$/;
 const RE_TABLE_SEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
 
+/** 표의 한 줄을 칸으로 나눈다. 칸 안의 \| 는 칸 구분이 아니라 글자 | 다 (GFM 표와 같은 규칙) */
 function splitRow(line: string): string[] {
-    let s = line.trim();
-    if (s.startsWith('|')) s = s.slice(1);
-    if (s.endsWith('|')) s = s.slice(0, -1);
-    return s.split('|').map((c) => c.trim());
+    const s = line.trim();
+    const cells: string[] = [];
+    let cell = '';
+    for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (c === '\\' && s[i + 1] === '|') {
+            cell += '|';
+            i++;
+        } else if (c === '|') {
+            cells.push(cell);
+            cell = '';
+        } else {
+            cell += c;
+        }
+    }
+    cells.push(cell);
+    // 줄 앞뒤의 | 는 칸을 감싸는 테두리라서 그 바깥의 빈 조각은 칸이 아니다
+    if (s.startsWith('|')) cells.shift();
+    if (cells.length > 1 && cells[cells.length - 1] === '' && s.endsWith('|') && !s.endsWith('\\|')) cells.pop();
+    return cells.map((c) => c.trim());
 }
 
 function isTableStart(lines: string[], i: number) {
     return lines[i].trim().startsWith('|') && i + 1 < lines.length && RE_TABLE_SEP.test(lines[i + 1]);
 }
 
+/**
+ * 문단을 이어 가던 줄이 새 블록을 시작하는지.
+ * 번호 목록은 1로 시작할 때만 문단을 끊는다 (CommonMark 규칙). 문단 중간의 "2026. 11. 20. 회의" 같은
+ * 날짜가 번호 목록으로 바뀌지 않게 하려는 것이다. 문단 밖에서 시작하는 번호 목록은 어떤 번호든 된다
+ */
 function startsBlock(lines: string[], i: number) {
     const l = lines[i];
+    const ol = RE_OL.exec(l);
     return (
-        !l.trim() || RE_HEADING.test(l) || RE_HR.test(l) || RE_UL.test(l) || RE_OL.test(l) ||
+        !l.trim() || RE_HEADING.test(l) || RE_HR.test(l) || RE_UL.test(l) || (ol !== null && Number(ol[1]) === 1) ||
         RE_QUOTE.test(l) || l.trim().startsWith('```') || isTableStart(lines, i)
     );
 }

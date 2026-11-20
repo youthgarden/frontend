@@ -78,6 +78,40 @@ describe('parseMarkdown: 지원하는 문법', () => {
             { t: 'ul', items: ['항목'] },
         ]);
     });
+
+    it('표 칸 안의 \\| 는 칸 구분이 아니라 글자 | 로 남는다', () => {
+        expect(parseMarkdown('| 조건 | 결과 |\n|---|---|\n| A \\| B | 둘 중 하나 |')).toEqual([
+            { t: 'table', head: ['조건', '결과'], rows: [['A | B', '둘 중 하나']] },
+        ]);
+        expect(parseMarkdown('| a \\| b |\n|---|\n| 끝이 \\|')).toEqual([
+            { t: 'table', head: ['a | b'], rows: [['끝이 |']] },
+        ]);
+    });
+
+    it('문단 중간의 날짜("2026. 11. 20.")는 번호 목록이 되지 않고 문단에 남는다', () => {
+        expect(parseMarkdown('다음 회의는 아래 날짜예요.\n2026. 11. 20. 회의')).toEqual([
+            { t: 'p', lines: ['다음 회의는 아래 날짜예요.', '2026. 11. 20. 회의'] },
+        ]);
+    });
+
+    it('1로 시작하는 번호 목록은 문단을 끊고, 문단 밖에서는 어떤 번호로든 시작한다', () => {
+        expect(parseMarkdown('순서\n1. 첫째\n2. 둘째')).toEqual([
+            { t: 'p', lines: ['순서'] },
+            { t: 'ol', items: ['첫째', '둘째'], start: 1 },
+        ]);
+        expect(parseMarkdown('순서\n\n2026. 11. 20. 회의')).toEqual([
+            { t: 'p', lines: ['순서'] },
+            { t: 'ol', items: ['11. 20. 회의'], start: 2026 },
+        ]);
+    });
+});
+
+describe('Markdown: 표 칸 안의 세로줄', () => {
+    it('\\| 가 든 칸 뒤의 칸도 화면에 보인다', () => {
+        const out = body('| 조건 | 결과 |\n|---|---|\n| A \\| B | 둘 중 하나 |');
+        expect(out).toContain('>A | B</td>');
+        expect(out).toContain('>둘 중 하나</td>');
+    });
 });
 
 describe('Markdown: 화면에 그리는 모양', () => {
