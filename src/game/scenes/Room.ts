@@ -1,7 +1,7 @@
 import { Geom, Scene } from 'phaser';
 import { EXAMINER_SPEC } from '../../character';
 import { emit, on, type GameEvents, type Place } from '../../events';
-import { HINT_STYLE, LABEL_STYLE, S, ensureAssets, travel } from '../assets';
+import { HINT_STYLE, LABEL_STYLE, S, addMapText, ensureAssets, travel } from '../assets';
 import { CharacterView } from '../character/CharacterView';
 import { Player } from '../player';
 import { TILE } from '../pixel-kit/index.js';
@@ -27,10 +27,13 @@ type Thing = [key: string, x: number, y: number, solid?: boolean]; // (x, y)는 
 type Spot = { at: [number, number]; reach: number; hint: string; target: GameEvents['interact'][0] };
 
 const desks = (rows: number[], desk = 'desk'): Thing[] => rows.flatMap((y) => DESK_X.flatMap((x): Thing[] => [[desk, x, y, true], ['chair', x, y + 16]]));
+// 의자마다 하나씩 있는 상호작용 지점. 의자 위에 서면 닿는다.
+const seats = (rows: number[], hint: string, target: Spot['target']): Spot[] =>
+    rows.flatMap((y) => DESK_X.map((x): Spot => ({ at: [x, y + 10], reach: 14, hint, target })));
 const FLAT = new Set(['carpet']); // 바닥에 깔리는 그림. 캐릭터가 위로 지나간다.
 
 // wall: 뒷벽 색 [벽면, 걸레받이]
-const ROOMS: Record<RoomPlace, { label: string; tile: string; wall: [number, number]; things: Thing[]; spot: Spot }> = {
+const ROOMS: Record<RoomPlace, { label: string; tile: string; wall: [number, number]; things: Thing[]; spots: Spot[] }> = {
     classroom: {
         label: '강의실',
         tile: 'floor',
@@ -42,7 +45,8 @@ const ROOMS: Record<RoomPlace, { label: string; tile: string; wall: [number, num
             ['lectern', 290, 100, true], // 교탁. 칠판 앞 자리는 비워 둔다
             ...desks([170, 246, 322]),
         ],
-        spot: { at: [360, 96], reach: 40, hint: '강의 보기', target: 'lectures' }, // 칠판 앞
+        // 칠판 앞이나 아무 자리에서 강의를 본다
+        spots: [{ at: [360, 96], reach: 40, hint: '강의 보기', target: 'lectures' }, ...seats([170, 246, 322], '자리에서 강의 보기', 'lectures')],
     },
     exam: {
         label: '시험장',
@@ -57,7 +61,8 @@ const ROOMS: Record<RoomPlace, { label: string; tile: string; wall: [number, num
             ...[176, 208, 240, 272, 304, 336, 368].map((y): Thing => ['carpet', 360, y]),
             ...desks([220, 310], 'examdesk'),
         ],
-        spot: { at: [360, 132], reach: 40, hint: '시험 보기', target: 'exam' }, // 접수 책상 앞
+        // 접수대 앞이나 아무 자리에서 시험을 본다
+        spots: [{ at: [360, 132], reach: 40, hint: '시험 보기', target: 'exam' }, ...seats([220, 310], '자리에서 시험 보기', 'exam')],
     },
 };
 
@@ -89,7 +94,7 @@ export class Room extends Scene {
         }
         // 출구
         this.add.rectangle(sx(DOOR[0] - 20), sy(FLOOR.y + FLOOR_H), 40 * S, 12 * S, 0x8a5a2b).setOrigin(0);
-        this.add.text(sx(DOOR[0]), sy(FLOOR.y + FLOOR_H + 26), '출구', LABEL_STYLE).setOrigin(0.5);
+        addMapText(this, sx(DOOR[0]), sy(FLOOR.y + FLOOR_H + 26), '출구', LABEL_STYLE).setOrigin(0.5);
 
         // 놓인 것들. 아래에 있는 것이 앞에 오도록 y를 depth로 쓴다.
         this.solids = [];
@@ -99,7 +104,7 @@ export class Room extends Scene {
             if (solid) this.solids.push(new Geom.Rectangle(sx(x) - img.displayWidth / 2, sy(y) - 22 * S, img.displayWidth, 22 * S));
         }
 
-        this.add.text(sx(FLOOR.x), sy(FLOOR.y - WALL_H - 14), room.label, LABEL_STYLE).setOrigin(0, 0.5);
+        addMapText(this, sx(FLOOR.x), sy(FLOOR.y - WALL_H - 14), room.label, LABEL_STYLE).setOrigin(0, 0.5);
 
         // 시험장 접수 책상 옆의 AI 시험관. 장식이라 막지 않는다. 책상 바로 뒤에 세우면 말을 걸러 온 캐릭터에 가려진다.
         if (this.place === 'exam') {
@@ -110,8 +115,7 @@ export class Room extends Scene {
         this.player = new Player(this, sx(DOOR[0]), sy(DOOR[1] - 44), (x, y) => this.canWalk(x, y));
         emit('place', this.place);
 
-        this.hint = this.add
-            .text(this.scale.width / 2, this.scale.height - 20, '', HINT_STYLE)
+        this.hint = addMapText(this, this.scale.width / 2, this.scale.height - 20, '', HINT_STYLE)
             .setOrigin(0.5)
             .setDepth(100001)
             .setVisible(false);
@@ -131,15 +135,15 @@ export class Room extends Scene {
         const room = ROOMS[this.place];
         const near = (at: [number, number], reach: number) => Math.hypot(this.player.x - sx(at[0]), this.player.y - sy(at[1])) < reach * S;
         const atDoor = near(DOOR, DOOR_REACH);
-        const atSpot = near(room.spot.at, room.spot.reach);
+        const atSpot = room.spots.find((s) => near(s.at, s.reach));
 
-        this.hint.setVisible(atDoor || atSpot);
+        this.hint.setVisible(atDoor || !!atSpot);
         if (atDoor) {
             this.hint.setText('F 또는 Space: 광장으로 나가기');
             if (this.player.pressedInteract()) travel(this, 'plaza', this.place);
         } else if (atSpot) {
-            this.hint.setText(`F 또는 Space: ${room.spot.hint}`);
-            if (this.player.pressedInteract()) emit('interact', room.spot.target);
+            this.hint.setText(`F 또는 Space: ${atSpot.hint}`);
+            if (this.player.pressedInteract()) emit('interact', atSpot.target);
         }
     }
 

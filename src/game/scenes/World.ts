@@ -1,6 +1,6 @@
 import { Scene } from 'phaser';
 import { emit, on, type Place } from '../../events';
-import { HINT_STYLE, LABEL_STYLE, S, ensureAssets, travel } from '../assets';
+import { HINT_STYLE, LABEL_STYLE, S, addMapText, ensureAssets, travel } from '../assets';
 import { RemotePlayers } from '../net/RemotePlayers';
 import { Player } from '../player';
 import { TILE } from '../pixel-kit/index.js';
@@ -99,9 +99,9 @@ export class World extends Scene {
             if (BUILDINGS.some((b) => b.key === key)) this.buildingImages.set(key, img);
         }
 
-        this.add.text(480 * S, (7 * T - 152) * S, '광장', LABEL_STYLE).setOrigin(0.5).setDepth(100000);
+        addMapText(this, 480 * S, (7 * T - 152) * S, '광장', LABEL_STYLE).setOrigin(0.5).setDepth(100000);
         for (const { label, labelAt } of BUILDINGS) {
-            this.add.text(labelAt[0] * S, labelAt[1] * S, label, LABEL_STYLE).setOrigin(0.5).setDepth(100000);
+            addMapText(this, labelAt[0] * S, labelAt[1] * S, label, LABEL_STYLE).setOrigin(0.5).setDepth(100000);
         }
 
         // 건물에서 나오면 문에서 조금 떨어져 시작한다. 문 앞에서 시작하면 누르고 있던 키 때문에 곧바로 다시 들어가 버린다.
@@ -113,8 +113,7 @@ export class World extends Scene {
         emit('place', 'plaza');
 
         // 화면에 고정된 안내 문구
-        this.hint = this.add
-            .text(this.scale.width / 2, this.scale.height - 90, '', HINT_STYLE)
+        this.hint = addMapText(this, this.scale.width / 2, this.scale.height - 90, '', HINT_STYLE)
             .setOrigin(0.5)
             .setScrollFactor(0)
             .setDepth(100001)

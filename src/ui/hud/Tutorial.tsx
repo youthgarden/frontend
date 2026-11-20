@@ -27,7 +27,7 @@ export function Tutorial({ onDone }: { onDone: () => void }) {
                     <p>
                         <Kbd>W</Kbd> <Kbd>A</Kbd> <Kbd>S</Kbd> <Kbd>D</Kbd>나 방향키로 걸어요.
                         건물 문 앞에서 <Kbd>F</Kbd> 또는 <Kbd>Space</Kbd>를 누르면 안으로 들어가요.
-                        안에서는 칠판이나 시험관 앞에 서서 같은 키를 누르면 강의를 보거나 말을 걸 수 있어요.
+                        안에서는 칠판이나 시험관 앞, 또는 자리에 서서 같은 키를 누르면 강의를 보거나 말을 걸 수 있어요.
                     </p>
                     <p className="mt-3 text-ink-soft">
                         어디로 가야 할지 모르겠다면 화면 왼쪽 아래의 <b className="text-ink">지금 할 일</b>을 보세요.
@@ -42,7 +42,7 @@ export function Tutorial({ onDone }: { onDone: () => void }) {
             body: (
                 <>
                     <p>
-                        강의장 칠판 앞에서 <Kbd>F</Kbd>를 누르면 강의 목록이 열려요.
+                        강의장 칠판 앞이나 자리에서 <Kbd>F</Kbd>를 누르면 강의 목록이 열려요.
                         영상에서 <b>실제로 본 부분이 80% 이상</b>이면 수강 완료예요.
                     </p>
                     <p className="mt-3 text-ink-soft">건너뛴 부분은 들어가지 않아요. 중간에 나가도 다음에 이어서 볼 수 있어요.</p>
