@@ -3,7 +3,19 @@
 // 시작할 때 검수용 API로 데이터를 초기화하고, 새로 가입한 계정으로 검사한다.
 // 하나라도 실패하면 종료 코드 1. 마지막 줄에 "passed N, failed M"을 출력한다.
 
+import { readFileSync } from 'node:fs';
 import WebSocket from 'ws';
+
+// 맵의 크기와 시작 위치는 src/game/mapSpec.ts가 정한다. 값을 여기에 따로 적어 두면 맵이 바뀔 때 검사가 틀린다.
+// 파일을 못 읽거나 값을 못 찾으면 검사를 건너뛰지 않고 여기서 멈춘다.
+const mapSpecSource = readFileSync(new URL('../src/game/mapSpec.ts', import.meta.url), 'utf8');
+function mapNumber(pattern, name) {
+    const m = mapSpecSource.match(pattern);
+    if (!m) throw new Error(`src/game/mapSpec.ts에서 ${name}을(를) 찾지 못했다`);
+    return Number(m[1]);
+}
+const MAP_HEIGHT = mapNumber(/MAP_HEIGHT\s*=\s*(\d+)/, 'MAP_HEIGHT');
+const SPAWN = { x: mapNumber(/SPAWN\s*=\s*\{\s*x:\s*(\d+)/, 'SPAWN.x'), y: mapNumber(/SPAWN\s*=\s*\{[^}]*y:\s*(\d+)/, 'SPAWN.y') };
 
 const BASE = (process.argv[2] ?? 'http://localhost:5180').replace(/\/$/, '');
 const API = `${BASE}/api/v1`;
@@ -320,7 +332,7 @@ async function main() {
     const a = await openWs();
     a.ws.send(JSON.stringify({ type: 'auth', access_token: token }));
     const snap = await waitFor(a, (c) => c.messages.find((m) => m.type === 'snapshot'));
-    check('snapshot (me = SPAWN 720,560)', snap?.me?.x === 720 && snap?.me?.y === 560 && snap?.me?.dir === 'down', snap?.me);
+    check(`snapshot (me = SPAWN ${SPAWN.x},${SPAWN.y})`, snap?.me?.x === SPAWN.x && snap?.me?.y === SPAWN.y && snap?.me?.dir === 'down', snap?.me);
     const bots = (snap?.players ?? []).filter((p) => p.user_id >= 9001);
     check('snapshot에 봇 4명 이상 (서로 다른 레벨)', bots.length >= 4 && new Set(bots.map((b) => b.level)).size >= 4, snap?.players);
 
@@ -332,7 +344,7 @@ async function main() {
     b.ws.send(JSON.stringify({ type: 'move', x: -100, y: 99999, dir: 'left', moving: true }));
     const otherId = joined?.player?.user_id;
     const moved = await waitFor(a, (c) => c.messages.find((m) => m.type === 'player_moved' && m.user_id === otherId));
-    check('player_moved (좌표를 맵 범위로 자름)', moved?.x === 0 && moved?.y === 900 && moved?.dir === 'left', moved);
+    check('player_moved (좌표를 맵 범위로 자름)', moved?.x === 0 && moved?.y === MAP_HEIGHT && moved?.dir === 'left', moved);
     for (let i = 0; i < 20; i++) b.ws.send(JSON.stringify({ type: 'move', x: 100 + i, y: 300, dir: 'right', moving: true }));
     await sleep(600);
     const burst = a.messages.filter((m) => m.type === 'player_moved' && m.user_id === otherId).length;
