@@ -1,5 +1,6 @@
-import type { Dir, MapPlayer } from '../../api';
+import type { MapPlayer } from '../../api';
 import { emit } from '../../events';
+import type { Dir } from '../mapSpec';
 import { MapSocket } from './MapSocket';
 
 // 멀티플레이 연결과 다른 접속자의 상태를 게임 단위로 보관한다 (API 명세서 8절).
@@ -41,7 +42,7 @@ export class MapPresence {
         this.socket = new MapSocket({
             snapshot: (players) => this.onSnapshot(players),
             joined: (p) => this.onJoined(p),
-            moved: (id, x, y, dir, moving) => this.onMoved(id, x, y, dir, moving),
+            moved: (id, x, y, yaw, moving) => this.onMoved(id, x, y, yaw, moving),
             updated: (id, level) => this.onUpdated(id, level),
             left: (id) => this.onLeft(id),
             disconnected: () => this.onSnapshot([]),
@@ -103,10 +104,10 @@ export class MapPresence {
         this.emitPopulation();
     }
 
-    private onMoved(id: number, x: number, y: number, dir: Dir, moving: boolean) {
+    private onMoved(id: number, x: number, y: number, yaw: number, moving: boolean) {
         const p = this.players.get(id);
         if (!p) return;
-        Object.assign(p, { x, y, dir, moving });
+        Object.assign(p, { x, y, yaw, moving });
         this.listener?.moved(p);
     }
 

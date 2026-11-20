@@ -1,6 +1,7 @@
 import { getAccessToken, notifySessionLost, refreshAccessToken } from '../../api';
-import type { Dir, MapClientMessage, MapPlayer, MapServerMessage } from '../../api';
+import type { MapClientMessage, MapPlayer, MapServerMessage } from '../../api';
 import { emit } from '../../events';
+import { dirToYaw, type Dir } from '../mapSpec';
 
 // 멀티플레이 WebSocket 클라이언트 (API 명세서 8절).
 // - 연결 직후 첫 메시지로 액세스 토큰을 보낸다. 토큰을 주소에 넣지 않는다.
@@ -26,7 +27,7 @@ export interface MapSocketHandlers {
      */
     snapshot(players: MapPlayer[]): void;
     joined(player: MapPlayer): void;
-    moved(userId: number, x: number, y: number, dir: Dir, moving: boolean): void;
+    moved(userId: number, x: number, y: number, yaw: number, moving: boolean): void;
     updated(userId: number, level: number): void;
     left(userId: number): void;
     /** 연결이 끊겼다. 다른 사용자 표시를 비운다 */
@@ -36,7 +37,7 @@ export interface MapSocketHandlers {
 interface MoveState {
     x: number;
     y: number;
-    dir: Dir;
+    yaw: number;
     moving: boolean;
 }
 
@@ -88,7 +89,7 @@ export class MapSocket {
      */
     reportMove(x: number, y: number, dir: Dir, moving: boolean) {
         if (!this.authed || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-        this.pending = { x: Math.round(x), y: Math.round(y), dir, moving };
+        this.pending = { x: Math.round(x), y: Math.round(y), yaw: dirToYaw(dir), moving };
         this.flush();
     }
 
@@ -96,7 +97,7 @@ export class MapSocket {
         const next = this.pending;
         if (!next || !this.authed || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
         const prev = this.lastSent;
-        if (prev && prev.x === next.x && prev.y === next.y && prev.dir === next.dir && prev.moving === next.moving) {
+        if (prev && prev.x === next.x && prev.y === next.y && prev.yaw === next.yaw && prev.moving === next.moving) {
             this.pending = null;
             return;
         }
@@ -182,7 +183,7 @@ export class MapSocket {
                 this.authRetried = false;
                 this.attempts = 0;
                 // 서버가 정한 시작 자리를 이미 알고 있으니, 그 자리에 서 있다는 보고는 보내지 않는다
-                this.lastSent = { x: Math.round(msg.me.x), y: Math.round(msg.me.y), dir: msg.me.dir, moving: false };
+                this.lastSent = { x: Math.round(msg.me.x), y: Math.round(msg.me.y), yaw: msg.me.yaw, moving: false };
                 this.lastSentAt = 0;
                 this.handlers.snapshot(msg.players);
                 emit('map-connection', 'connected');
@@ -191,7 +192,7 @@ export class MapSocket {
                 this.handlers.joined(msg.player);
                 break;
             case 'player_moved':
-                this.handlers.moved(msg.user_id, msg.x, msg.y, msg.dir, msg.moving);
+                this.handlers.moved(msg.user_id, msg.x, msg.y, msg.yaw, msg.moving);
                 break;
             case 'player_updated':
                 this.handlers.updated(msg.user_id, msg.level);

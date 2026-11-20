@@ -112,7 +112,7 @@ export function LecturePlayerView({ lectureId, flushRef, onBack, onGuideToExam }
                             {linkedText && <> 이제 {linkedText} 시험을 볼 수 있어요.</>}
                         </p>
                     </div>
-                    {linked.length > 0 && (
+                    {detail.task_id !== null && (
                         <Button variant="primary" onClick={onGuideToExam}>시험장으로 이동</Button>
                     )}
                 </div>
@@ -134,6 +134,12 @@ export function LecturePlayerView({ lectureId, flushRef, onBack, onGuideToExam }
                 <p className="mt-2 text-[14px] leading-snug text-ink-soft">
                     실제로 본 부분만 수강률에 들어가요. 80% 이상 보면 수강 완료예요. 건너뛴 부분은 들어가지 않고, 보는 동안 10초마다 저장돼요.
                 </p>
+                {/* 명세 5절: 다시 보거나 새로고침한 뒤에도 completed이고 연결 과제가 있으면 이동 버튼을 보여 준다 */}
+                {completed && !justCompleted && detail.task_id !== null && (
+                    <div className="mt-2">
+                        <Button size="sm" variant="primary" onClick={onGuideToExam}>시험장으로 이동</Button>
+                    </div>
+                )}
                 {!completed && linkedText && (
                     <p className="mt-1 text-[14px] leading-snug text-ink-soft">이 강의를 다 들으면 {linkedText} 시험을 볼 수 있어요.</p>
                 )}

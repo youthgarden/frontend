@@ -29,19 +29,20 @@ export interface LectureSummary {
     completed: boolean;
 }
 export interface LectureDashboard { completed_count: number; total_count: number; lectures: LectureSummary[] }
-export interface LectureDetail extends LectureSummary { youtube_video_id: string; last_position_sec: number }
+/** task_id: 이 강의와 연결된 과제. 없으면 null */
+export interface LectureDetail extends LectureSummary { youtube_video_id: string; last_position_sec: number; task_id: number | null }
 export interface ProgressRequest { watched_ranges: [number, number][]; position_sec: number }
 export interface ProgressResponse { progress_rate: number; completed: boolean; just_completed: boolean }
 
 // ── 멀티플레이 (WebSocket /ws/map) ──
-export type Dir = 'up' | 'down' | 'left' | 'right';
-export interface MapPlayer { user_id: number; nickname: string; level: number; x: number; y: number; dir: Dir; moving: boolean }
+// x, y는 Phaser 월드 좌표. yaw는 2D 이동 방향(라디안, [-π, π)): 오른쪽 0, 아래 π/2, 위 -π/2
+export interface MapPlayer { user_id: number; nickname: string; level: number; x: number; y: number; yaw: number; moving: boolean }
 export type MapClientMessage =
     | { type: 'auth'; access_token: string }
-    | { type: 'move'; x: number; y: number; dir: Dir; moving: boolean };
+    | { type: 'move'; x: number; y: number; yaw: number; moving: boolean };
 export type MapServerMessage =
-    | { type: 'snapshot'; me: { x: number; y: number; dir: Dir }; players: MapPlayer[] }
+    | { type: 'snapshot'; me: { x: number; y: number; yaw: number }; players: MapPlayer[] }
     | { type: 'player_joined'; player: MapPlayer }
-    | { type: 'player_moved'; user_id: number; x: number; y: number; dir: Dir; moving: boolean }
+    | { type: 'player_moved'; user_id: number; x: number; y: number; yaw: number; moving: boolean }
     | { type: 'player_updated'; user_id: number; level: number }
     | { type: 'player_left'; user_id: number };
