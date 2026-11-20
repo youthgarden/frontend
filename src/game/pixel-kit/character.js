@@ -452,7 +452,7 @@ function drawTails(g, s, view) {
   };
   if (st.tail === 'pony') {
     // 캐릭터의 왼쪽으로 묶은 머리. 앞모습에서는 화면 오른쪽, 뒷모습에서는 화면 왼쪽에 온다.
-    // 옆모습은 drawCharacter가 따로 그린다: 왼쪽을 볼 때만 보이고, 오른쪽을 볼 때는 머리 뒤에 가려진다.
+    // 옆모습은 drawCharacter가 따로 그린다: 왼쪽을 볼 때는 전부 보이고, 오른쪽을 볼 때는 머리 뒤에 가려져 끝만 보인다.
     if (view === 'down') drawPony(g, s, (dx) => 33 + dx);
     if (view === 'up') drawPony(g, s, (dx) => 4 - dx);
   } else {
@@ -621,6 +621,8 @@ export function drawCharacter(spec, dir = 'down', frame = 0) {
   // 1. 몸 뒤로 가는 머리카락
   if (view === 'down') layer(main, u, (g) => { hairMass(g, s, false); drawTails(g, s, view); });
   if (view === 'right') layer(main, u, (g) => { hairMass(g, s, true); drawTails(g, s, view); });
+  // 오른쪽을 볼 때 포니테일은 반대편에 있다. 머리 뒤에 그려 두면 머리에 가려지고 목 뒤로 끝부분만 보인다.
+  if (dir === 'right' && s.st.tail === 'pony') layer(main, u, (g) => drawPony(g, s, (dx) => 12 - dx));
   if (view === 'up') layer(main, u, (g) => drawTails(g, s, view));
 
   // 2. 다리
