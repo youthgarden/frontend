@@ -58,8 +58,6 @@ export function Hud({ onOpenHelp }: { onOpenHelp: () => void }) {
                 </div>
             )}
 
-            {/* 왼쪽 위: 조작 키 안내 */}
-            <KeyGuide />
         </div>
     );
 }
@@ -317,63 +315,5 @@ function ConnectionBanner({ state }: { state: 'reconnecting' | 'replaced' }) {
             <span className="mr-2 inline-block h-2.5 w-2.5 animate-[px-blink_0.8s_steps(2)_infinite] bg-sun-deep motion-reduce:animate-none align-middle" aria-hidden />
             <b>다른 사용자와 연결이 끊겨 다시 연결하는 중이에요.</b> 그동안 다른 사람의 움직임이 멈춰 보일 수 있어요.
         </Notice>
-    );
-}
-
-// ── 조작 키 안내 ──
-
-const KEY_GUIDE_STORE = 'yg-keyguide-folded';
-
-function KeyGuide() {
-    // 접은 상태는 브라우저에 기억한다. 저장소를 못 쓰는 환경이면 펼친 채로 둔다
-    const [folded, setFolded] = useState(() => {
-        try {
-            return localStorage.getItem(KEY_GUIDE_STORE) === '1';
-        } catch {
-            return false;
-        }
-    });
-    const toggle = (e: MouseEvent<HTMLButtonElement>) => {
-        releaseFocus(e);
-        setFolded((v) => {
-            try {
-                localStorage.setItem(KEY_GUIDE_STORE, v ? '0' : '1');
-            } catch {
-                /* 기억하지 못해도 접기는 동작한다 */
-            }
-            return !v;
-        });
-    };
-    if (folded) {
-        return (
-            <button
-                type="button"
-                aria-expanded={false}
-                onClick={toggle}
-                className="pointer-events-auto absolute left-4 top-4 bg-paper/85 px-box-flat px-3 py-2 font-pixel text-[13px] font-bold"
-            >
-                조작 ▶
-            </button>
-        );
-    }
-    return (
-        <div className="absolute left-4 top-4 flex w-max items-center gap-5 whitespace-nowrap bg-paper/85 px-box-flat px-4 py-2 text-[13px]">
-            <span className="flex items-center gap-1.5">
-                <span className="mr-1 font-pixel font-bold">이동</span>
-                <Kbd>W</Kbd><Kbd>A</Kbd><Kbd>S</Kbd><Kbd>D</Kbd>
-                <span className="mx-1 text-ink-soft">또는</span>
-                <Kbd>↑</Kbd><Kbd>←</Kbd><Kbd>↓</Kbd><Kbd>→</Kbd>
-            </span>
-            <span className="h-4 w-[2px] bg-line" aria-hidden />
-            <span className="flex items-center gap-1.5">
-                <span className="mr-1 font-pixel font-bold">말 걸기·보기</span>
-                <Kbd>F</Kbd>
-                <span className="mx-1 text-ink-soft">또는</span>
-                <Kbd>Space</Kbd>
-            </span>
-            <button type="button" aria-expanded aria-label="조작 안내 접기" onClick={toggle} className="pointer-events-auto -mr-1 px-1 font-pixel text-ink-soft">
-                ◀
-            </button>
-        </div>
     );
 }
