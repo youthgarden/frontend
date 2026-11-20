@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { errorMessage } from '../../api/client';
-import { api } from '../../api/endpoints';
-import type { LectureDetail, ProgressResponse } from '../../api/types';
+import { errorMessage } from '../../api';
+import { api } from '../../api';
+import type { LectureDetail, ProgressResponse } from '../../api';
 import { characterSpec } from '../../character';
 import { useSession } from '../../session/SessionProvider';
 import { KitArt } from '../hud/KitArt';

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import type { TaskSummary } from '../../api/types';
+import type { TaskSummary } from '../../api';
 import { characterSpec, levelInfo, MAX_LEVEL } from '../../character';
 import { current, emit, on, type GameEvents } from '../../events';
 import { useMe, useSession } from '../../session/SessionProvider';

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AttemptInProgress } from '../../api/types';
+import type { AttemptInProgress } from '../../api';
 
 /**
  * 서버에서 받은 응시와, 받은 순간의 단조 시계 값(performance.now()).

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { api } from '../../api/endpoints';
+import { api } from '../../api';
 import { characterSpec, EXAMINER_SPEC, levelInfo, MAX_LEVEL } from '../../character';
 import { useMe } from '../../session/SessionProvider';
 import { Button, Dialog, Kbd, PixelCharacter, ProgressBar } from '../kit';

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { errorMessage } from '../../api/client';
-import { api } from '../../api/endpoints';
-import type { AttemptListItem } from '../../api/types';
+import { errorMessage } from '../../api';
+import { api } from '../../api';
+import type { AttemptListItem } from '../../api';
 import { Button, Dialog, Loading, Notice } from '../kit';
 import { AttemptStatusChip } from './parts';
 import { formatDateTime } from './util';

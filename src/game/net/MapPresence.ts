@@ -1,4 +1,4 @@
-import type { Dir, MapPlayer } from '../../api/types';
+import type { Dir, MapPlayer } from '../../api';
 import { emit } from '../../events';
 import { MapSocket } from './MapSocket';
 

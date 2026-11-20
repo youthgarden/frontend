@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { errorMessage } from '../../api/client';
-import { api } from '../../api/endpoints';
-import type { AttemptInProgress, AttemptPendingResult, ChatMessage } from '../../api/types';
+import { errorMessage } from '../../api';
+import { api } from '../../api';
+import type { AttemptInProgress, AttemptPendingResult, ChatMessage } from '../../api';
 import { useSession } from '../../session/SessionProvider';
 import { Button, Dialog, Loading, Notice } from '../kit';
 import { ExaminerSay } from './parts';

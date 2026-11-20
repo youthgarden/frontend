@@ -1,5 +1,5 @@
 import { Scenes, type Scene } from 'phaser';
-import type { Dir, MapPlayer } from '../../api/types';
+import type { Dir, MapPlayer } from '../../api';
 import { characterSpec } from '../../character';
 import { CharacterView } from '../character/CharacterView';
 import type { Player } from '../player';

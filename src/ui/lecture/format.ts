@@ -1,4 +1,4 @@
-import type { TaskSummary } from '../../api/types';
+import type { TaskSummary } from '../../api';
 
 /** 초를 '분:초'로. 예: 605 → '10:05' */
 export function formatTime(sec: number) {

@@ -1,5 +1,5 @@
-import { getAccessToken, notifySessionLost, refreshAccessToken } from '../../api/client';
-import type { Dir, MapClientMessage, MapPlayer, MapServerMessage } from '../../api/types';
+import { getAccessToken, notifySessionLost, refreshAccessToken } from '../../api';
+import type { Dir, MapClientMessage, MapPlayer, MapServerMessage } from '../../api';
 import { emit } from '../../events';
 
 // 멀티플레이 WebSocket 클라이언트 (API 명세서 8절).

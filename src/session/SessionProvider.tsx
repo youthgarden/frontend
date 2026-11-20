@@ -1,10 +1,13 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { refreshAccessToken, setAccessToken, setSessionLostHandler } from '../api/client';
-import { api } from '../api/endpoints';
-import type { LectureDashboard, Me, TaskSummary } from '../api/types';
+import {
+    api, invalidateLectureProgress, refreshAccessToken, setAccessToken, setSessionLostHandler, useLectures, userQueries, useTasks,
+    type LectureDashboard, type Me, type TaskSummary,
+} from '../api';
 
 // 로그인 상태와, 여러 화면이 함께 보는 내 정보(레벨, 강의 수강 현황, 과제 현황)를 들고 있다.
-// 화면마다 따로 불러오면 HUD와 창의 숫자가 어긋나므로 한 곳에 둔다.
+// 강의와 과제 현황은 조회 저장소(TanStack Query)에 있다. 여기서는 그것을 꺼내 보여 줄 뿐이라,
+// 어느 화면이든 값을 바꾼 뒤 그 조회를 낡은 것으로 표시하면 HUD까지 함께 갱신된다.
 
 type Status = 'booting' | 'guest' | 'authed';
 
@@ -39,41 +42,42 @@ export function useMe() {
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
+    const queryClient = useQueryClient();
     const [status, setStatus] = useState<Status>('booting');
     const [me, setMe] = useState<Me | null>(null);
-    const [lectures, setLectures] = useState<LectureDashboard | null>(null);
-    const [tasks, setTasks] = useState<TaskSummary[] | null>(null);
+
+    // 로그인한 동안에만 부른다. 한쪽이 실패해도 다른 쪽은 보여 준다
+    const authed = status === 'authed';
+    const lectures = useLectures(authed).data ?? null;
+    const tasks = useTasks(authed).data ?? null;
 
     const clear = useCallback(() => {
         setAccessToken(null);
         setMe(null);
-        setLectures(null);
-        setTasks(null);
         setStatus('guest');
-    }, []);
+        // 다음에 로그인하는 사람에게 앞사람의 값이 보이면 안 된다
+        queryClient.clear();
+    }, [queryClient]);
 
     const reloadProgress = useCallback(async () => {
-        // 한쪽이 실패해도 다른 쪽은 보여준다
-        const [l, t] = await Promise.allSettled([api.lectures(), api.tasks()]);
-        if (l.status === 'fulfilled') setLectures(l.value);
-        if (t.status === 'fulfilled') setTasks(t.value);
-    }, []);
+        await invalidateLectureProgress(queryClient);
+    }, [queryClient]);
 
     const reloadMe = useCallback(async () => {
         try {
-            const next = await api.me();
+            // 저장해 둔 값을 쓰지 않고 반드시 새로 받는다
+            const next = await queryClient.fetchQuery({ ...userQueries.me(), staleTime: 0 });
             setMe(next);
             return next;
         } catch {
             return null;
         }
-    }, []);
+    }, [queryClient]);
 
     const enter = useCallback(async () => {
-        setMe(await api.me());
+        setMe(await queryClient.fetchQuery({ ...userQueries.me(), staleTime: 0 }));
         setStatus('authed');
-        void reloadProgress();
-    }, [reloadProgress]);
+    }, [queryClient]);
 
     // 앱 시작: 새로고침하면 메모리의 액세스 토큰이 사라지므로 쿠키의 리프레시 토큰으로 복구한다
     useEffect(() => {

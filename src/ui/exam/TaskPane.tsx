@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import type { AttemptTask } from '../../api/types';
+import type { AttemptTask } from '../../api';
 import { Markdown } from './Markdown';
 import { TabBar } from './parts';
 

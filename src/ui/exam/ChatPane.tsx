@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
-import { errorMessage } from '../../api/client';
-import { api } from '../../api/endpoints';
-import type { ChatMessage } from '../../api/types';
+import { errorMessage } from '../../api';
+import { api } from '../../api';
+import type { ChatMessage } from '../../api';
 import { Button, Kbd, Notice } from '../kit';
 import { Markdown } from './Markdown';
 import { isCode } from './util';

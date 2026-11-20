@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import type { AttemptPendingResult, ChatMessage } from '../../api/types';
+import type { AttemptPendingResult, ChatMessage } from '../../api';
 import { useMapLock } from '../kit';
 import { AttemptOutcome, type PendingLevelUp } from './AttemptOutcome';
 import { EntryCheck, ExaminerMenu, ResumePrompt, UnseenResult } from './EntryViews';

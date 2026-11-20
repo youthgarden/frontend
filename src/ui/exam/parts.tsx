@@ -1,5 +1,5 @@
 import { useRef, type KeyboardEvent, type ReactNode } from 'react';
-import type { AttemptStatus } from '../../api/types';
+import type { AttemptStatus } from '../../api';
 import { EXAMINER_SPEC } from '../../character';
 import { Button, Chip, Dialog, PixelCharacter } from '../kit';
 

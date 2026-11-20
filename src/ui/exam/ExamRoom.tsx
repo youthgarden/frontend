@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { errorMessage } from '../../api/client';
-import { api } from '../../api/endpoints';
-import type { AttemptEventType, ChatMessage } from '../../api/types';
+import { errorMessage } from '../../api';
+import { api } from '../../api';
+import type { AttemptEventType, ChatMessage } from '../../api';
 import { Button, Dialog, Loading, Notice, useMapLock } from '../kit';
 import { AnswerPane } from './AnswerPane';
 import { ChatPane } from './ChatPane';

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { errorMessage, request } from '../../api/client';
+import { errorMessage, request } from '../../api';
 import { useSession } from '../../session/SessionProvider';
 import { Button, Chip, LevelBadge, Notice, Panel } from '../kit';
 

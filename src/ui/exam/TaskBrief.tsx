@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { errorMessage } from '../../api/client';
-import { api } from '../../api/endpoints';
-import type { TaskDetail } from '../../api/types';
+import { errorMessage } from '../../api';
+import { api } from '../../api';
+import type { TaskDetail } from '../../api';
 import { Button, Dialog, Loading, Notice } from '../kit';
 import { ExaminerSay } from './parts';
 import type { LiveAttempt } from './useCountdown';

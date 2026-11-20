@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { errorMessage } from '../../api/client';
-import { api } from '../../api/endpoints';
-import type { LectureDashboard as Dashboard, LectureSummary } from '../../api/types';
+import { useQuery } from '@tanstack/react-query';
+import { errorMessage, FRESH_ON_OPEN, lectureQueries, type LectureSummary } from '../../api';
 import { useSession } from '../../session/SessionProvider';
 import { Button, Chip, Loading, Notice, ProgressBar } from '../kit';
 import { COMPLETE_RATE, formatTime, lectureStatus, percent, tasksForLecture } from './format';
@@ -11,26 +9,13 @@ import { COMPLETE_RATE, formatTime, lectureStatus, percent, tasksForLecture } fr
 
 export function LectureDashboard({ onOpen }: { onOpen: (lectureId: number) => void }) {
     const { tasks } = useSession();
-    const [data, setData] = useState<Dashboard | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    // 창을 열 때마다 최신 수강률을 받는다. 그동안에는 저장해 둔 값을 먼저 보여 준다
+    const { data, error, refetch, isFetching } = useQuery({ ...lectureQueries.dashboard(), ...FRESH_ON_OPEN });
 
-    const load = useCallback(async () => {
-        setError(null);
-        try {
-            setData(await api.lectures());
-        } catch (e) {
-            setError(errorMessage(e));
-        }
-    }, []);
-
-    useEffect(() => {
-        void load();
-    }, [load]);
-
-    if (error) {
+    if (!data && error) {
         return (
-            <Notice tone="danger" action={<Button size="sm" onClick={() => { setData(null); void load(); }}>다시 시도</Button>}>
-                강의 목록을 불러오지 못했어요. {error}
+            <Notice tone="danger" action={<Button size="sm" busy={isFetching} onClick={() => void refetch()}>다시 시도</Button>}>
+                강의 목록을 불러오지 못했어요. {errorMessage(error)}
             </Notice>
         );
     }

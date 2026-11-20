@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ProgressRequest, ProgressResponse } from '../../api/types';
+import type { ProgressRequest, ProgressResponse } from '../../api';
 import { MAX_RANGES_PER_REPORT, WatchTracker } from './watchTracker';
 
 // 수강률은 "실제로 본 구간"으로 정해진다. 구간을 잘못 재면 본 만큼 인정받지 못하거나 안 본 구간이 들어간다.

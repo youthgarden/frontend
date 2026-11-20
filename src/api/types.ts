@@ -9,7 +9,9 @@ export type ErrorCode =
     | 'ATTEMPT_NOT_IN_PROGRESS' | 'ATTEMPT_ALREADY_IN_PROGRESS' | 'ATTEMPT_TIME_OVER' | 'ATTEMPT_NOT_REGRADABLE'
     | 'AI_UNAVAILABLE'
     // 아래 둘은 명세에 없고 프론트가 만든다: 서버에 닿지 못함 / 형식을 알 수 없는 응답
-    | 'NETWORK_ERROR' | 'UNKNOWN';
+    | 'NETWORK_ERROR' | 'UNKNOWN'
+    // 응답이 시간 안에 오지 않음 / 화면이 요청을 일부러 끊음
+    | 'TIMEOUT' | 'ABORTED';
 
 export interface Job { id: number; name: string }
 
