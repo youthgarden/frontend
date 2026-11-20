@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { errorMessage, useAttemptMessages, useAttemptResult, useRegradeAttempt } from '../../api';
 import type { AttemptResult, ScoreItem } from '../../api';
 import { levelInfo } from '../../character';
 import { Button, Chip, Dialog, LevelBadge, Loading, Notice, ProgressBar } from '../kit';
 import { ChatBubble } from './ChatPane';
 import { ExaminerSay, TabBar } from './parts';
-import { CRITERION_LOOKS_AT, DEFAULT_PASS_SCORE, formatDateTime, isCode, type TaskRef } from './util';
+import { describeReason, josa, verdictOf, type Verdict } from './passing';
+import { CRITERION_LOOKS_AT, formatDateTime, isCode, type TaskRef } from './util';
 
 // 제출한 응시의 채점 대기 → 결과. 지난 결과 보기에서도 같은 컴포넌트를 쓴다.
 
@@ -153,11 +154,14 @@ function ResultView({ data, levelUpNow, onBack, onClose, onOpenLecture, onRetry 
     onOpenLecture: (lectureId: number) => void;
     onRetry: (task: TaskRef) => void;
 }) {
-    const passScore = data.pass_score ?? DEFAULT_PASS_SCORE;
-    const total = data.total_score ?? 0;
+    const verdict = verdictOf(data);
+    const scores = data.scores ?? [];
     const passed = !!data.passed;
     const lecture = data.recommended_lecture;
-    const lowest = data.scores.length ? Math.min(...data.scores.map((s) => s.score / s.max_score)) : 1;
+    const lowest = scores.length ? Math.min(...scores.map((s) => s.score / s.max_score)) : 1;
+    const dual = verdict.kind === 'dual' ? verdict : null;
+    /** 두 영역 기준이면 항목 카드에 소속 영역의 이름을 붙인다 (이름은 응답의 dimensions에서) */
+    const dimensionName = (s: ScoreItem) => data.dimensions?.find((d) => d.code === s.dimension)?.name ?? null;
 
     const [review, setReview] = useState<'chat' | 'answer' | null>(null);
     const [highlight, setHighlight] = useState<number | null>(null);
@@ -210,57 +214,24 @@ function ResultView({ data, levelUpNow, onBack, onClose, onOpenLecture, onRetry 
             }
         >
             <div className="space-y-7">
-                {/* 총점과 통과 여부 */}
-                <section aria-label="총점" className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-                    <div className="px-box-flat bg-white px-5 py-4">
-                        <div className="flex flex-wrap items-center gap-3">
-                            <p className="font-pixel leading-none">
-                                <span className="text-[52px] font-bold tabular-nums">{total}</span>
-                                <span className="ml-1 text-[18px] text-ink-soft">/ 100점</span>
-                            </p>
-                            {passed
-                                ? <Chip tone="ok" className="text-[15px]">통과</Chip>
-                                : <Chip tone="sun" className="text-[15px]">미달</Chip>}
-                        </div>
-                        <div className="relative mt-4 pb-6">
-                            <ProgressBar
-                                value={total / 100}
-                                mark={passScore / 100}
-                                tone={passed ? 'ok' : 'sun'}
-                                label={`총점 ${total}점, 통과 기준 ${passScore}점`}
-                                className="h-4"
-                            />
-                            <span
-                                className="absolute top-6 -translate-x-1/2 whitespace-nowrap font-pixel text-[12px] text-ink-soft"
-                                style={{ left: `${passScore}%` }}
-                                aria-hidden
-                            >
-                                통과 {passScore}점
-                            </span>
-                        </div>
-                        <p className="text-[14px] leading-6 text-ink-soft">
-                            {passed
-                                ? `통과 기준 ${passScore}점을 넘었어요.`
-                                : `통과까지 ${Math.max(passScore - total, 0)}점 남았어요. 아래에서 어떤 항목을 보완하면 좋을지 확인해 보세요.`}
-                        </p>
-                    </div>
-                    {data.summary_feedback && (
-                        <ExaminerSay>
-                            <span className="block whitespace-pre-line">{data.summary_feedback}</span>
-                        </ExaminerSay>
-                    )}
-                </section>
+                {/* 통과 여부를 먼저, 통과하지 못했으면 그 이유를 총점보다 앞에 */}
+                {dual && <DualVerdict id={data.id} verdict={dual} summary={data.summary_feedback} />}
+                {verdict.kind === 'legacy' && <LegacyVerdict verdict={verdict} scores={scores} summary={data.summary_feedback} />}
 
                 <LevelNote data={data} levelUpNow={levelUpNow} />
+
+                {dual && <DimensionResults id={data.id} verdict={dual} maxTotal={scores.reduce((s, x) => s + x.max_score, 0)} />}
 
                 {/* 항목별 점수 */}
                 <section aria-labelledby={`scores-${data.id}`}>
                     <h3 id={`scores-${data.id}`} className="mb-3 font-pixel text-[15px] font-bold">항목별 점수</h3>
                     <ul className="grid gap-4 md:grid-cols-2">
-                        {data.scores.map((s) => (
+                        {scores.map((s) => (
                             <ScoreCard
                                 key={s.criterion}
                                 item={s}
+                                dimensionName={dimensionName(s)}
+                                minScore={dual?.verify && s.criterion === 'VERIFY' ? dual.verify.min : null}
                                 weakest={!passed && s.score / s.max_score === lowest}
                                 onEvidence={s.evidence_message_id !== null ? () => showEvidence(s.evidence_message_id!) : undefined}
                             />
@@ -353,21 +324,228 @@ function ResultView({ data, levelUpNow, onBack, onClose, onOpenLecture, onRetry 
     );
 }
 
-function ScoreCard({ item, weakest, onEvidence }: { item: ScoreItem; weakest: boolean; onEvidence?: () => void }) {
-    const ratio = item.max_score ? item.score / item.max_score : 0;
+/** 두 영역 기준: 통과 여부, 총평, 그리고 통과하지 못했으면 그 이유 */
+function DualVerdict({ id, verdict, summary }: { id: number; verdict: Extract<Verdict, { kind: 'dual' }>; summary: string | null }) {
+    const { passed, reasons } = verdict;
+    const names = verdict.dimensions.map((d) => d.name).reduce((s, n, i) => (i === 0 ? n : `${s}${josa(s, '과', '와')} ${n}`), '');
     return (
-        <li className={`flex flex-col border-2 bg-white px-4 py-3.5 ${weakest ? 'border-sun-deep' : 'border-line'}`}>
+        <>
+            <section aria-labelledby={`verdict-${id}`} className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                <div className="px-box-flat bg-white px-5 py-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        {passed
+                            ? <Chip tone="ok" className="text-[15px]">통과</Chip>
+                            : <Chip tone="sun" className="text-[15px]">미달</Chip>}
+                        <h3 id={`verdict-${id}`} className="font-pixel text-[22px] font-bold leading-tight">
+                            {passed ? '통과했어요' : '아직 통과하지 못했어요'}
+                        </h3>
+                    </div>
+                    <p className="mt-3 text-[15px] leading-7">
+                        {passed
+                            ? `${names}, 두 영역의 기준을 모두 넘었어요.`
+                            : `통과하려면 ${names}, 두 영역을 모두 충족해야 해요. 아래 ${reasons.length}가지가 부족했어요.`}
+                    </p>
+                </div>
+                {summary && (
+                    <ExaminerSay>
+                        <span className="block whitespace-pre-line">{summary}</span>
+                    </ExaminerSay>
+                )}
+            </section>
+
+            {!passed && reasons.length > 0 && (
+                <section aria-labelledby={`why-${id}`} className="border-l-[6px] border-sun-deep bg-sun-soft px-5 py-4">
+                    <h3 id={`why-${id}`} className="font-pixel text-[16px] font-bold">통과하지 못한 이유</h3>
+                    <p className="mt-1 text-[14px] leading-6">
+                        총점은 {verdict.total}점이에요. 통과는 총점이 아니라 두 영역의 기준으로 정해요.
+                        {verdict.scoresMet && ' 두 영역의 점수는 모두 최소 점수를 넘었지만, 아래 이유로 통과하지 못했어요.'}
+                    </p>
+                    <ol className="mt-3 space-y-3">
+                        {reasons.map((r, i) => {
+                            const t = describeReason(r);
+                            const basis = r.code === 'REQUIRED_CHECK' ? r.check.feedback : null;
+                            return (
+                                <li key={`${r.code}-${i}`} className="flex gap-3 border-2 border-sun-deep bg-white px-4 py-3">
+                                    <span aria-hidden className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center border-2 border-ink bg-sun font-pixel text-[14px] font-bold">
+                                        {i + 1}
+                                    </span>
+                                    <div className="min-w-0 space-y-1">
+                                        <p className="text-[15px] font-bold leading-7">{t.title}</p>
+                                        <p className="text-[15px] leading-7">{t.detail}</p>
+                                        {basis && (
+                                            <p className="text-[14px] leading-6"><strong className="font-bold">판정 근거: </strong>{basis}</p>
+                                        )}
+                                        <p className="text-[14px] leading-6 text-ink-soft"><strong className="font-bold text-ink">다음에는: </strong>{t.next}</p>
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ol>
+                </section>
+            )}
+        </>
+    );
+}
+
+/** 두 영역 기준: 영역별 점수·최소 점수·충족 여부, 필수 요건과 검증 최소 점수의 충족 여부 */
+function DimensionResults({ id, verdict, maxTotal }: { id: number; verdict: Extract<Verdict, { kind: 'dual' }>; maxTotal: number }) {
+    return (
+        <section aria-labelledby={`dims-${id}`}>
+            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <h3 id={`dims-${id}`} className="font-pixel text-[15px] font-bold">영역별 결과</h3>
+                <p className="font-pixel text-[14px] text-ink-soft">
+                    총점 <strong className="text-[18px] tabular-nums text-ink">{verdict.total}</strong> / {maxTotal}점
+                </p>
+            </div>
+            <p className="mb-3 text-[14px] leading-6 text-ink-soft">두 영역이 모두 충족이면 통과예요.</p>
+            <ul className="grid gap-4 md:grid-cols-2">
+                {verdict.dimensions.map((d) => {
+                    const scoreOk = d.score >= d.min_score;
+                    return (
+                        <li key={d.code} className={`flex flex-col border-2 bg-white px-4 py-3.5 ${d.passed ? 'border-line' : 'border-sun-deep'}`}>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <h4 className="font-pixel text-[15px] font-bold">{d.name}</h4>
+                                {d.passed ? <Chip tone="ok">충족</Chip> : <Chip tone="sun">미충족</Chip>}
+                            </div>
+                            <p className="mt-1 font-pixel leading-none">
+                                <span className="text-[30px] font-bold tabular-nums">{d.score}</span>
+                                <span className="text-[15px] text-ink-soft"> / {d.max_score}점</span>
+                            </p>
+                            <div className="relative mt-3 pb-6">
+                                <ProgressBar
+                                    value={d.max_score ? d.score / d.max_score : 0}
+                                    mark={d.max_score ? d.min_score / d.max_score : undefined}
+                                    tone={d.passed ? 'ok' : 'sun'}
+                                    label={`${d.name} ${d.score}점, 최소 ${d.min_score}점, ${d.max_score}점 만점, ${d.passed ? '충족' : '미충족'}`}
+                                />
+                                <span
+                                    className="absolute top-5 -translate-x-1/2 whitespace-nowrap font-pixel text-[12px] text-ink-soft"
+                                    style={{ left: `${d.max_score ? (d.min_score / d.max_score) * 100 : 0}%` }}
+                                    aria-hidden
+                                >
+                                    최소 {d.min_score}점
+                                </span>
+                            </div>
+                            <ul className="space-y-2 border-t-2 border-line pt-3 text-[14px] leading-6">
+                                <Condition ok={scoreOk} okLabel="충족" failLabel="미달">
+                                    영역 점수 {d.score}점 (최소 {d.min_score}점)
+                                </Condition>
+                                {d.code === 'AI_USE' && verdict.verify && (
+                                    <Condition ok={verdict.verify.met} okLabel="충족" failLabel="미달">
+                                        그중 {verdict.verify.name} {verdict.verify.score}점 (최소 {verdict.verify.min}점)
+                                    </Condition>
+                                )}
+                                {d.code === 'TASK_SOLUTION' && verdict.checks.map((c) => (
+                                    <Condition key={c.check_id} ok={c.met} okLabel="지켰어요" failLabel="못 지켰어요">
+                                        <span className="block font-bold">꼭 지켜야 할 것: {c.label}</span>
+                                        {c.feedback && <span className="block text-ink-soft">{c.feedback}</span>}
+                                    </Condition>
+                                ))}
+                            </ul>
+                        </li>
+                    );
+                })}
+            </ul>
+        </section>
+    );
+}
+
+/** 영역 카드 안의 조건 한 줄. 상태를 색과 함께 글자(꼬리표)로 말한다 */
+function Condition({ ok, okLabel, failLabel, children }: { ok: boolean; okLabel: string; failLabel: string; children: ReactNode }) {
+    return (
+        <li className="flex items-start gap-2.5">
+            <span className="shrink-0 pt-0.5">{ok ? <Chip tone="ok">{okLabel}</Chip> : <Chip tone="sun">{failLabel}</Chip>}</span>
+            <span className="min-w-0">{children}</span>
+        </li>
+    );
+}
+
+/** 예전 기준(LEGACY_TOTAL_V1): 총점과 통과 기준선 */
+function LegacyVerdict({ verdict, scores, summary }: { verdict: Extract<Verdict, { kind: 'legacy' }>; scores: ScoreItem[]; summary: string | null }) {
+    const { passed, total, minTotal, shortBy } = verdict;
+    const maxTotal = scores.reduce((s, x) => s + x.max_score, 0) || 100;
+    const maxes = new Set(scores.map((s) => s.max_score));
+    const each = maxes.size === 1 ? ` (각 ${[...maxes][0]}점)` : '';
+    return (
+        <>
+            <section aria-label="총점" className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                <div className="px-box-flat bg-white px-5 py-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <p className="font-pixel leading-none">
+                            <span className="text-[52px] font-bold tabular-nums">{total}</span>
+                            <span className="ml-1 text-[18px] text-ink-soft">/ {maxTotal}점</span>
+                        </p>
+                        {passed
+                            ? <Chip tone="ok" className="text-[15px]">통과</Chip>
+                            : <Chip tone="sun" className="text-[15px]">미달</Chip>}
+                    </div>
+                    <div className="relative mt-4 pb-6">
+                        <ProgressBar
+                            value={total / maxTotal}
+                            mark={minTotal / maxTotal}
+                            tone={passed ? 'ok' : 'sun'}
+                            label={`총점 ${total}점, 통과 기준 ${minTotal}점, ${passed ? '통과' : '미달'}`}
+                            className="h-4"
+                        />
+                        <span
+                            className="absolute top-6 -translate-x-1/2 whitespace-nowrap font-pixel text-[12px] text-ink-soft"
+                            style={{ left: `${(minTotal / maxTotal) * 100}%` }}
+                            aria-hidden
+                        >
+                            통과 {minTotal}점
+                        </span>
+                    </div>
+                    <p className="text-[14px] leading-6 text-ink-soft">
+                        {passed
+                            ? `통과 기준 ${minTotal}점을 넘었어요.`
+                            : `통과까지 ${shortBy}점 남았어요. 아래에서 어떤 항목을 보완하면 좋을지 확인해 보세요.`}
+                    </p>
+                </div>
+                {summary && (
+                    <ExaminerSay>
+                        <span className="block whitespace-pre-line">{summary}</span>
+                    </ExaminerSay>
+                )}
+            </section>
+            <Notice tone="info">
+                채점 기준이 바뀌기 전에 본 시험이라, 그때의 기준으로 채점했어요. 네 항목{each}을 더해 {minTotal}점 이상이면 통과예요.
+            </Notice>
+        </>
+    );
+}
+
+function ScoreCard({ item, dimensionName, minScore, weakest, onEvidence }: {
+    item: ScoreItem;
+    /** 두 영역 기준이면 소속 영역의 이름 */
+    dimensionName: string | null;
+    /** 이 항목에 따로 최소 점수가 있으면 (답변 검증) */
+    minScore: number | null;
+    weakest: boolean;
+    onEvidence?: () => void;
+}) {
+    const ratio = item.max_score ? item.score / item.max_score : 0;
+    const belowMin = minScore !== null && item.score < minScore;
+    return (
+        <li className={`flex flex-col border-2 bg-white px-4 py-3.5 ${weakest || belowMin ? 'border-sun-deep' : 'border-line'}`}>
+            {dimensionName && <p className="mb-1 font-pixel text-[12px] leading-none text-ink-soft">{dimensionName}</p>}
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="flex items-center gap-2 font-pixel text-[15px] font-bold">
+                <p className="flex flex-wrap items-center gap-2 font-pixel text-[15px] font-bold">
                     {item.name}
-                    {weakest && <Chip tone="sun">가장 보완할 항목</Chip>}
+                    {belowMin && <Chip tone="sun">최소 {minScore}점 미달</Chip>}
+                    {weakest && !belowMin && <Chip tone="sun">가장 보완할 항목</Chip>}
                 </p>
                 <p className="font-pixel text-[15px] font-bold tabular-nums">
                     {item.score}
                     <span className="font-normal text-ink-soft"> / {item.max_score}점</span>
                 </p>
             </div>
-            <ProgressBar value={ratio} tone={ratio >= 0.8 ? 'ok' : 'sun'} label={`${item.name} ${item.score}점, ${item.max_score}점 만점`} className="mt-2.5" />
+            <ProgressBar
+                value={ratio}
+                mark={minScore !== null && item.max_score ? minScore / item.max_score : undefined}
+                tone={ratio >= 0.8 && !belowMin ? 'ok' : 'sun'}
+                label={`${item.name} ${item.score}점, ${item.max_score}점 만점${minScore !== null ? `, 최소 ${minScore}점 ${belowMin ? '미달' : '충족'}` : ''}`}
+                className="mt-2.5"
+            />
             <p className="mt-3 text-[15px] leading-7">{item.feedback}</p>
             <p className="mt-1.5 text-[13px] leading-5 text-ink-soft">{CRITERION_LOOKS_AT[item.criterion]}</p>
             {onEvidence && (

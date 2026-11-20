@@ -133,7 +133,7 @@ export function ChatPane({ attemptId, initialMessages, locked, onPaste, onTimeOv
                             {draft.length.toLocaleString()} / {MAX_LEN.toLocaleString()}자{tooLong ? ' (너무 길어요)' : ''}
                         </span>
                     </p>
-                    <Button size="sm" onClick={() => void send()} disabled={!canSend} busy={pending !== null}>보내기</Button>
+                    <Button size="sm" className="shrink-0 whitespace-nowrap" onClick={() => void send()} disabled={!canSend} busy={pending !== null}>보내기</Button>
                 </div>
             </div>
         </>

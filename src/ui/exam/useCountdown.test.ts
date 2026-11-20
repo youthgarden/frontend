@@ -12,7 +12,10 @@ function attempt(remaining_sec: number): AttemptInProgress {
         started_at: '2026-11-20T03:00:00Z',
         deadline_at: '2026-11-20T03:30:00Z',
         remaining_sec,
-        task: { id: 1, title: '과제', situation: '', instruction: '', materials: [] },
+        task: {
+            id: 1, title: '과제', situation: '', instruction: '', materials: [], criteria: [],
+            pass_requirements: { version: 'DUAL_V1', task_solution_min_score: 40, ai_use_min_score: 40, verify_min_score: 12, required_checks: [] },
+        },
     };
 }
 

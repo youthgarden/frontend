@@ -14,16 +14,18 @@ function text(markup: string) {
 }
 
 describe('AttemptStatusChip', () => {
-    it('채점이 끝나고 통과면 "통과 N점"', () => {
-        expect(text(renderToStaticMarkup(<AttemptStatusChip status="GRADED" score={85} passed />))).toBe('통과 85점');
+    // 통과는 총점이 아니라 두 영역으로 정해진다. 점수가 높은 미달(예: 95점)이 점수 기준처럼 읽히지 않게 "총점"을 붙인다
+    it('채점이 끝나고 통과면 "통과 · 총점 N점"', () => {
+        expect(text(renderToStaticMarkup(<AttemptStatusChip status="GRADED" score={85} passed />))).toBe('통과 · 총점 85점');
     });
 
-    it('채점이 끝나고 미달이면 "미달 N점"', () => {
-        expect(text(renderToStaticMarkup(<AttemptStatusChip status="GRADED" score={72} passed={false} />))).toBe('미달 72점');
+    it('채점이 끝나고 미달이면 총점이 높아도 "미달 · 총점 N점"', () => {
+        expect(text(renderToStaticMarkup(<AttemptStatusChip status="GRADED" score={72} passed={false} />))).toBe('미달 · 총점 72점');
+        expect(text(renderToStaticMarkup(<AttemptStatusChip status="GRADED" score={95} passed={false} />))).toBe('미달 · 총점 95점');
     });
 
     it('점수가 0점이어도 0점으로 보인다', () => {
-        expect(text(renderToStaticMarkup(<AttemptStatusChip status="GRADED" score={0} passed={false} />))).toBe('미달 0점');
+        expect(text(renderToStaticMarkup(<AttemptStatusChip status="GRADED" score={0} passed={false} />))).toBe('미달 · 총점 0점');
     });
 
     it('채점 중, 채점 실패, 푸는 중은 점수 없이 상태를 글자로 말한다', () => {

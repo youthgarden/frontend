@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../api';
 import type { CriterionCode } from '../../api';
-import { CRITERION_LOOKS_AT, DEFAULT_PASS_SCORE, formatClock, formatDateTime, formatDuration, formatTime, isCode } from './util';
+import { CRITERION_LOOKS_AT, formatClock, formatDateTime, formatDuration, formatTime, isCode } from './util';
 
 // 시험 화면의 시간 표시와 오류 구분. 남은 시간을 실제보다 적게 보이거나 오류를 잘못 구분하면
 // 응시자가 서두르다 손해를 보거나, 제출된 시험을 다시 풀려고 한다.
@@ -110,14 +110,14 @@ describe('isCode', () => {
     });
 });
 
-describe('평가 항목 설명과 기본 통과 점수', () => {
+describe('평가 항목 설명', () => {
     it('네 항목 모두 설명이 있다', () => {
         const codes: CriterionCode[] = ['RESULT', 'PROMPT', 'VERIFY', 'IMPROVE'];
         for (const c of codes) expect(CRITERION_LOOKS_AT[c].length).toBeGreaterThan(0);
         expect(Object.keys(CRITERION_LOOKS_AT).sort()).toEqual([...codes].sort());
     });
 
-    it('명세의 기본 통과 점수는 80점', () => {
-        expect(DEFAULT_PASS_SCORE).toBe(80);
+    it('설명에 점수나 통과 기준을 적지 않는다 (숫자는 응답에서 가져온다)', () => {
+        for (const text of Object.values(CRITERION_LOOKS_AT)) expect(text).not.toMatch(/\d+\s*점/);
     });
 });

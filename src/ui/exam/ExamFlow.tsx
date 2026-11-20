@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { AttemptPendingResult, ChatMessage } from '../../api';
+import { emit } from '../../events';
 import { useMapLock } from '../kit';
 import { AttemptOutcome, type PendingLevelUp } from './AttemptOutcome';
 import { EntryCheck, ExaminerMenu, ResumePrompt, UnseenResult } from './EntryViews';
@@ -58,6 +59,12 @@ export function ExamFlow({ onClose, onOpenLecture, onLevelUp }: {
         flushLevelUp();
         onOpenLecture(lectureId);
     };
+    // 잠긴 과제의 "강의실로 이동" (명세 6절 available): 창을 닫고 맵의 캐릭터를 강의실 입구로 옮긴다.
+    // 강의 창의 "시험장으로 이동"(LectureOverlay)과 같은 방식이다
+    const goToClassroom = () => {
+        close();
+        emit('goto', 'classroom');
+    };
 
     const recheck = () => setView((v) => ({ kind: 'entry', key: v.kind === 'entry' ? v.key + 1 : 0 }));
 
@@ -102,7 +109,7 @@ export function ExamFlow({ onClose, onOpenLecture, onLevelUp }: {
             return (
                 <TaskList
                     onPick={(task) => setView({ kind: 'brief', task })}
-                    onOpenLecture={openLecture}
+                    onGoToClassroom={goToClassroom}
                     onBack={() => setView({ kind: 'menu' })}
                     onClose={close}
                 />
@@ -122,7 +129,7 @@ export function ExamFlow({ onClose, onOpenLecture, onLevelUp }: {
             return (
                 <LockedNotice
                     task={view.task}
-                    onOpenLecture={openLecture}
+                    onGoToClassroom={goToClassroom}
                     onBackToList={() => setView({ kind: 'tasks' })}
                     onClose={close}
                 />

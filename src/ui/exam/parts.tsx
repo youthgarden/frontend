@@ -58,12 +58,15 @@ export function ConfirmDialog({
     );
 }
 
-/** 응시 상태 꼬리표. 색과 함께 글자로 상태를 말한다 */
+/**
+ * 응시 상태 꼬리표. 색과 함께 글자로 상태를 말한다.
+ * 통과 여부는 총점이 아니라 두 영역으로 정해지므로, 점수 앞에 "총점"을 붙여 "미달 95점"이 점수 기준처럼 읽히지 않게 한다
+ */
 export function AttemptStatusChip({ status, score, passed }: { status: AttemptStatus; score: number | null; passed: boolean | null }) {
     if (status === 'GRADING') return <Chip tone="uniform">채점 중</Chip>;
     if (status === 'GRADING_FAILED') return <Chip tone="danger">채점 실패</Chip>;
     if (status === 'IN_PROGRESS') return <Chip tone="neutral">푸는 중</Chip>;
-    return passed ? <Chip tone="ok">통과 {score}점</Chip> : <Chip tone="sun">미달 {score}점</Chip>;
+    return passed ? <Chip tone="ok">통과 · 총점 {score}점</Chip> : <Chip tone="sun">미달 · 총점 {score}점</Chip>;
 }
 
 /**
