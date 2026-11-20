@@ -20,6 +20,6 @@ export function tasksForLecture(tasks: TaskSummary[] | null, lectureId: number) 
 /** 강의 상태 문구. 색만으로 구분하지 않도록 상태마다 글자를 정한다 */
 export function lectureStatus(l: { progress_rate: number; completed: boolean }) {
     if (l.completed) return { kind: 'done' as const, text: '수강 완료', action: '다시 보기' };
-    if (l.progress_rate > 0) return { kind: 'doing' as const, text: `수강 중 ${percent(l.progress_rate)}%`, action: '이어 보기' };
+    if (l.progress_rate > 0) return { kind: 'doing' as const, text: '수강 중', action: '이어 보기' };
     return { kind: 'todo' as const, text: '수강 전', action: '보기' };
 }
