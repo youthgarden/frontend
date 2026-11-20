@@ -426,6 +426,20 @@ const PONY_ROWS = [
   [2, 6], [2, 6], [2, 6], [2, 6], [2, 6], [3, 6], [3, 6], [3, 6], [4, 7], [5, 7], [6, 7],
 ];
 
+// 포니테일 한 가닥. at(dx)는 머리에 붙는 쪽에서 dx칸 떨어진 곳의 x좌표.
+function drawPony(g, s, at) {
+  const [hh, hb, hd] = s.hr;
+  PONY_ROWS.forEach(([a, b], i) => {
+    const y = 15 + i;
+    for (let dx = a; dx <= b; dx++) {
+      const last = i === PONY_ROWS.length - 1;
+      g.set(at(dx), y, dx === b || last ? hd : dx === a + 1 && y >= 22 && y <= 29 ? hh : hb);
+    }
+  });
+  // 머리끈. 머리 테두리에 가려지지 않게 머리에서 두 칸 떨어뜨린다
+  for (const dx of [2, 3]) g.vline(at(dx), 17, 19, '#ff6b8a');
+}
+
 function drawTails(g, s, view) {
   const st = s.st;
   if (!st.tail) return;
@@ -437,17 +451,10 @@ function drawTails(g, s, view) {
     g.vline(x0 + 2, y0 + 3, y0 + 7, hh);
   };
   if (st.tail === 'pony') {
-    // 옆으로 묶은 머리. 앞모습에서는 오른쪽, 뒷모습과 옆모습에서는 왼쪽(머리 뒤)에 온다.
-    const at = view === 'down' ? (dx) => 33 + dx : (dx) => 4 - dx;
-    PONY_ROWS.forEach(([a, b], i) => {
-      const y = 15 + i;
-      for (let dx = a; dx <= b; dx++) {
-        const last = i === PONY_ROWS.length - 1;
-        g.set(at(dx), y, dx === b || last ? hd : dx === a + 1 && y >= 22 && y <= 29 ? hh : hb);
-      }
-    });
-    // 머리끈. 머리 테두리에 가려지지 않게 머리에서 두 칸 떨어뜨린다
-    for (const dx of [2, 3]) g.vline(at(dx), 17, 19, tie);
+    // 캐릭터의 왼쪽으로 묶은 머리. 앞모습에서는 화면 오른쪽, 뒷모습에서는 화면 왼쪽에 온다.
+    // 옆모습은 drawCharacter가 따로 그린다: 왼쪽을 볼 때만 보이고, 오른쪽을 볼 때는 머리 뒤에 가려진다.
+    if (view === 'down') drawPony(g, s, (dx) => 33 + dx);
+    if (view === 'up') drawPony(g, s, (dx) => 4 - dx);
   } else {
     if (view === 'down' || view === 'up') {
       blob(-3, 19, 5, 38);
@@ -651,6 +658,8 @@ export function drawCharacter(spec, dir = 'down', frame = 0) {
       drawPin(g, s, view);
     }
   }, s.hr);
+  // 왼쪽을 볼 때는 묶은 쪽이 보는 사람을 향한다. 귀 뒤에서 어깨 앞으로 내려오게 머리 위에 그린다.
+  if (dir === 'left' && s.st.tail === 'pony') layer(main, u, (g) => drawPony(g, s, (dx) => 12 - dx), s.hr);
   if (view === 'up') layer(main, u, (g) => hairMass(g, s, false), s.hr);
 
   // 5. 모자
