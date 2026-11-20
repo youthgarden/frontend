@@ -8,7 +8,7 @@ export const MAP_WIDTH = 1920;
 export const MAP_HEIGHT = 1408;
 
 /** 접속할 때마다 서는 자리: 광장 분수 앞. World.ts의 SPAWN과 같은 자리다 */
-export const SPAWN = { x: 960, y: 932 } as const;
+export const SPAWN = { x: 960, y: 880 } as const;
 
-/** 광장 돌바닥 중 분수 위쪽의 범위. 모의 서버의 가상 접속자가 이 안에서만 돌아다닌다 (분수와 건물에 겹치지 않는 곳) */
-export const WALK_BOUNDS = { left: 620, right: 1300, top: 520, bottom: 790 } as const;
+/** 광장 돌바닥 중 분수 아래쪽의 범위. 모의 서버의 가상 접속자가 이 안에서만 돌아다닌다 (분수와 건물에 겹치지 않는 곳) */
+export const WALK_BOUNDS = { left: 620, right: 1300, top: 810, bottom: 1000 } as const;

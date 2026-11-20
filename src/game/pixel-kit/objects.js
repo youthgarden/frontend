@@ -11,6 +11,14 @@ function done(g) {
   return g.outline(OUTLINE);
 }
 
+// 그림이 Grid 가장자리까지 닿으면 outline이 그 바깥에 선을 그릴 자리가 없어 테두리가 끊긴다.
+// 사방에 한 칸씩 여유를 두고 옮겨 그린 뒤 테두리를 두른다.
+function doneFramed(g) {
+  const framed = new Grid(g.w + 2, g.h + 2);
+  framed.blit(g, 1, 1);
+  return framed.outline(OUTLINE);
+}
+
 function treeRound(seed = 1) {
   const g = new Grid(36, 46);
   const r = rng(seed * 977);
@@ -424,7 +432,672 @@ function building({ w = 128, wallH = 52, roof = ['#ffa66b', '#f08a32', '#b85e1c'
   return done(g);
 }
 
+// 창문 하나 (12x16). (x, y)는 유리의 왼쪽 위.
+function windowAt(g, x, y, sill) {
+  g.rect(x - 1, y - 1, 14, 18, OUTLINE);
+  g.rect(x, y, 12, 16, '#8fd0ff');
+  g.rect(x + 1, y + 1, 4, 5, '#d8f1ff');
+  g.vline(x + 6, y, y + 15, '#ffffff');
+  g.hline(x, x + 11, y + 8, '#ffffff');
+  g.rect(x - 2, y + 16, 16, 2, sill);
+}
+
+// 위가 둥근 창문. (x, y)는 네모난 유리의 왼쪽 위이고, 둥근 부분이 그 위로 6칸 올라간다.
+function archWindowAt(g, x, y, sill) {
+  g.ellipse(x - 1, y - 7, x + 12, y + 6, OUTLINE);
+  g.ellipse(x, y - 6, x + 11, y + 5, '#8fd0ff');
+  windowAt(g, x, y, sill);
+  g.hline(x, x + 11, y - 1, '#ffffff');
+  g.vline(x + 6, y - 5, y - 1, '#ffffff');
+}
+
+// 창문 아래 꽃 상자. (x, y)는 windowAt에 준 것과 같은 좌표.
+function flowerBox(g, x, y) {
+  g.rect(x - 1, y + 18, 14, 3, WOOD[2]);
+  g.hline(x - 1, x + 12, y + 20, WOOD[3]);
+  for (let i = 0; i < 12; i++) g.set(x + i, y + 17, i % 4 === 1 ? '#ff6b8a' : i % 4 === 3 ? '#ffd23d' : '#4fae4a');
+}
+
+// 지붕 줄무늬 한 줄
+function roofLine(g, x0, x1, y, roof) {
+  g.hline(x0, x1, y, roof[1]);
+  if (y % 5 === 4) g.hline(x0, x1, y, roof[2]);
+  else if (y % 5 === 0) g.hline(x0 + 1, x0 + Math.round((x1 - x0) / 3), y, roof[0]);
+}
+
+const STAR = ['...y...', '..yyy..', 'yyyyyyy', '.yyyyy.', '.yy.yy.', 'y.....y'];
+
+// 강의실: 2층 학교. 가운데 시계탑과 깃발, 양쪽 날개에 창문 두 줄.
+function school() {
+  const w = 184;
+  const cx = 92;
+  const roof = ['#ff9a86', '#e2553f', '#a8342a'];
+  const wall = ['#fff6dc', '#fbe7bf', '#e3c896'];
+  const g = new Grid(w, 142);
+  // 날개 벽 (2층)
+  g.rect(4, 64, w - 8, 72, wall[1]);
+  g.rect(4, 64, w - 8, 3, wall[2]);
+  g.hline(4, w - 5, 99, wall[2]);
+  g.hline(4, w - 5, 100, wall[0]);
+  g.rect(4, 130, w - 8, 6, STONE[2]);
+  g.hline(4, w - 5, 130, STONE[1]);
+  // 날개 지붕
+  for (let y = 44; y <= 63; y++) {
+    const inset = Math.round(((63 - y) / 20) * 18);
+    roofLine(g, inset, w - 1 - inset, y, roof);
+  }
+  g.hline(0, w - 1, 63, roof[2]);
+  g.hline(0, w - 1, 64, OUTLINE);
+  // 날개 창문: 층마다 세 개씩
+  for (const y of [72, 107]) {
+    for (const x of [9, 27, 45]) {
+      windowAt(g, x, y, wall[2]);
+      windowAt(g, w - 12 - x, y, wall[2]);
+      if (y === 107) { flowerBox(g, x, y); flowerBox(g, w - 12 - x, y); }
+    }
+  }
+  // 굴뚝
+  g.rect(28, 34, 10, 14, '#c9694f');
+  g.vline(36, 35, 47, '#8f3f2e');
+  g.vline(37, 35, 47, '#8f3f2e');
+  g.hline(28, 35, 40, '#a8503a');
+  g.rect(27, 32, 12, 3, STONE[1]);
+  g.hline(27, 38, 34, STONE[3]);
+  // 시계탑
+  g.rect(cx - 26, 32, 52, 104, wall[0]);
+  g.vline(cx - 27, 33, 135, OUTLINE);
+  g.vline(cx + 26, 33, 135, OUTLINE);
+  g.vline(cx + 25, 33, 129, wall[2]);
+  g.vline(cx + 24, 33, 129, wall[1]);
+  g.rect(cx - 26, 130, 52, 6, STONE[2]);
+  g.hline(cx - 26, cx + 25, 130, STONE[1]);
+  for (let y = 12; y <= 31; y++) {
+    const half = Math.round(((y - 11) / 20) * 32);
+    roofLine(g, cx - half, cx + half - 1, y, roof);
+  }
+  g.hline(cx - 32, cx + 31, 31, roof[2]);
+  g.hline(cx - 32, cx + 31, 32, OUTLINE);
+  // 시계
+  g.ellipse(cx - 11, 38, cx + 10, 59, OUTLINE);
+  g.ellipse(cx - 10, 39, cx + 9, 58, '#fffaf0');
+  g.vline(cx, 42, 49, OUTLINE);
+  g.hline(cx, cx + 5, 49, OUTLINE);
+  [[0, -9], [0, 8], [-9, 0], [8, 0]].forEach(([dx, dy]) => g.set(cx + dx, 49 + dy, '#9a8a6a'));
+  // 탑 창문과 현판
+  archWindowAt(g, cx - 6, 71, wall[2]);
+  g.rect(cx - 19, 92, 38, 10, OUTLINE);
+  g.rect(cx - 18, 93, 36, 8, '#3f6fb0');
+  for (let x = cx - 14; x <= cx + 12; x += 5) g.rect(x, 96, 3, 2, '#ffffff');
+  // 현관: 넓은 양문과 계단
+  g.rect(cx - 15, 109, 30, 27, OUTLINE);
+  g.ellipse(cx - 15, 103, cx + 14, 117, OUTLINE);
+  g.rect(cx - 14, 110, 28, 26, '#2f6fb0');
+  g.ellipse(cx - 14, 104, cx + 13, 116, '#2f6fb0');
+  g.vline(cx - 1, 105, 135, '#245890');
+  g.vline(cx, 105, 135, '#245890');
+  g.rect(cx - 11, 112, 7, 9, '#8fd0ff');
+  g.rect(cx + 4, 112, 7, 9, '#8fd0ff');
+  g.set(cx - 3, 125, '#ffd23d');
+  g.set(cx + 2, 125, '#ffd23d');
+  g.rect(cx - 20, 136, 40, 3, STONE[1]);
+  g.rect(cx - 25, 139, 50, 3, STONE[2]);
+  // 현관 등
+  for (const x of [cx - 22, cx + 19]) {
+    g.rect(x - 1, 109, 5, 7, OUTLINE);
+    g.rect(x, 110, 3, 5, '#ffe98a');
+  }
+  // 깃발
+  g.vline(cx, 0, 11, '#7a7a8e');
+  g.rect(cx + 1, 1, 11, 7, '#ffcf2e');
+  g.hline(cx + 1, cx + 11, 7, '#e39b12');
+  g.rect(cx + 4, 3, 3, 2, '#ffffff');
+  return doneFramed(g);
+}
+
+// 시험장: 기둥 네 개와 삼각 지붕이 있는 큰 홀. 별 문양과 현수막으로 격식을 준다.
+function examHall() {
+  const w = 168;
+  const cx = 84;
+  const roof = ['#7f96e6', '#3d55a8', '#27397a'];
+  const gold = '#ffd23d';
+  const g = new Grid(w, 122);
+  // 뒷벽
+  g.rect(10, 48, w - 20, 62, '#4a3b7a');
+  g.rect(10, 48, w - 20, 5, '#392c62');
+  // 삼각 지붕과 안쪽 흰 면
+  for (let y = 6; y <= 39; y++) {
+    const half = Math.round(((y - 5) / 34) * 84);
+    g.hline(cx - half, cx + half - 1, y, y >= 37 ? roof[2] : roof[1]);
+    if (y >= 14 && y <= 35 && half > 16) g.hline(cx - half + 12, cx + half - 13, y, y === 14 ? STONE[1] : STONE[0]);
+  }
+  for (let y = 8; y <= 36; y += 1) {
+    const half = Math.round(((y - 5) / 34) * 84);
+    g.set(cx - half + 2, y, roof[0]);
+  }
+  for (let y = 6; y <= 39; y++) {
+    const half = Math.round(((y - 5) / 34) * 84);
+    g.set(cx - half, y, gold);
+    g.set(cx + half - 1, y, gold);
+  }
+  g.map(cx - 3, 21, STAR, { y: gold });
+  // 별을 감싸는 월계수
+  [[9, 20], [11, 22], [12, 24], [12, 26], [11, 28], [9, 30], [7, 31]].forEach(([dx, y]) => {
+    g.rect(cx - dx - 1, y, 2, 2, '#4fae4a');
+    g.rect(cx + dx - 1, y, 2, 2, '#4fae4a');
+  });
+  // 지붕 양 끝 장식
+  g.rect(0, 33, 3, 7, gold);
+  g.rect(w - 3, 33, 3, 7, gold);
+  g.rect(cx - 2, 0, 4, 6, gold);
+  g.hline(cx - 3, cx + 2, 5, '#e39b12');
+  // 처마
+  g.rect(2, 40, w - 4, 8, STONE[0]);
+  g.hline(2, w - 3, 40, gold);
+  g.hline(2, w - 3, 41, gold);
+  g.hline(2, w - 3, 47, STONE[2]);
+  for (let x = 4; x <= w - 6; x += 4) g.rect(x, 44, 2, 2, STONE[2]);
+  // 현수막
+  for (const x of [30, w - 46]) {
+    g.rect(x, 53, 16, 36, '#d8423a');
+    for (let i = 0; i < 8; i++) g.hline(x + i, x + 15 - i, 89 + i, '#d8423a');
+    g.hline(x, x + 15, 53, gold);
+    g.hline(x, x + 15, 54, gold);
+    g.vline(x + 15, 55, 88, '#a8342a');
+    g.map(x + 5, 64, ['..y..', 'yyyyy', '.yyy.', 'yy.yy'], { y: gold });
+    g.hline(x + 4, x + 11, 76, '#ffb3a8');
+    g.hline(x + 4, x + 11, 80, '#ffb3a8');
+  }
+  // 현판과 큰 문
+  g.rect(cx - 15, 55, 30, 9, OUTLINE);
+  g.rect(cx - 14, 56, 28, 7, gold);
+  for (let x = cx - 10; x <= cx + 8; x += 5) g.rect(x, 58, 3, 3, '#7a4a12');
+  g.rect(cx - 17, 77, 34, 33, OUTLINE);
+  g.ellipse(cx - 17, 67, cx + 16, 89, OUTLINE);
+  g.rect(cx - 16, 78, 32, 32, '#b97a3c');
+  g.ellipse(cx - 16, 68, cx + 15, 88, '#8fd0ff');
+  g.hline(cx - 16, cx + 15, 79, gold);
+  g.hline(cx - 16, cx + 15, 80, '#7a4a12');
+  g.rect(cx - 16, 81, 32, 29, '#b97a3c');
+  g.vline(cx - 1, 81, 109, '#7a4a12');
+  g.vline(cx, 81, 109, '#7a4a12');
+  g.rect(cx - 12, 85, 8, 10, '#d9a066');
+  g.rect(cx + 4, 85, 8, 10, '#d9a066');
+  g.rect(cx - 12, 98, 8, 9, '#d9a066');
+  g.rect(cx + 4, 98, 8, 9, '#d9a066');
+  g.set(cx - 3, 96, gold);
+  g.set(cx + 2, 96, gold);
+  // 기둥
+  for (const x of [14, 50, 106, 142]) {
+    g.rect(x, 48, 12, 62, '#fffaf0');
+    g.vline(x + 3, 53, 104, STONE[0]);
+    g.vline(x + 8, 53, 104, STONE[1]);
+    g.vline(x + 10, 52, 105, STONE[2]);
+    g.vline(x + 11, 52, 105, STONE[2]);
+    g.rect(x - 2, 48, 16, 4, STONE[0]);
+    g.hline(x - 2, x + 13, 51, STONE[2]);
+    g.rect(x - 2, 106, 16, 4, STONE[1]);
+  }
+  // 계단
+  g.rect(6, 110, w - 12, 4, STONE[0]);
+  g.rect(3, 114, w - 6, 4, STONE[1]);
+  g.rect(0, 118, w, 4, STONE[2]);
+  g.hline(6, w - 7, 113, STONE[2]);
+  g.hline(3, w - 4, 117, STONE[3]);
+  // 계단 위 붉은 융단
+  g.rect(cx - 14, 110, 28, 12, '#d8423a');
+  g.vline(cx - 14, 110, 121, gold);
+  g.vline(cx + 13, 110, 121, gold);
+  g.hline(cx - 13, cx + 12, 113, '#a8342a');
+  g.hline(cx - 13, cx + 12, 117, '#a8342a');
+  return doneFramed(g);
+}
+
+// 광장 본관: 가운데가 앞으로 나온 큰 건물. 삼각 지붕에 시계, 기둥이 받치는 현관, 양쪽 날개에 둥근 창문.
+function mainHall() {
+  const w = 192;
+  const cx = 96;
+  const roof = ['#ffc08a', '#f08a32', '#b85e1c'];
+  const wall = ['#fff6dc', '#fbe7bf', '#e3c896'];
+  const g = new Grid(w, 140);
+  // 날개 벽과 지붕
+  g.rect(4, 66, w - 8, 64, wall[1]);
+  g.rect(4, 66, w - 8, 3, wall[2]);
+  g.rect(4, 124, w - 8, 6, STONE[2]);
+  g.hline(4, w - 5, 124, STONE[1]);
+  for (let y = 44; y <= 65; y++) {
+    const inset = Math.round(((65 - y) / 22) * 20);
+    roofLine(g, inset, w - 1 - inset, y, roof);
+  }
+  g.hline(0, w - 1, 65, roof[2]);
+  g.hline(0, w - 1, 66, OUTLINE);
+  for (const x of [12, 36]) {
+    for (const wx of [x, w - 12 - x]) {
+      archWindowAt(g, wx, 86, wall[2]);
+      flowerBox(g, wx, 86);
+    }
+  }
+  // 가운데 건물
+  const bx0 = cx - 34;
+  const bx1 = cx + 33;
+  g.rect(bx0, 46, 68, 84, wall[0]);
+  g.vline(bx0 - 1, 46, 129, OUTLINE);
+  g.vline(bx1 + 1, 46, 129, OUTLINE);
+  g.vline(bx1, 47, 123, wall[2]);
+  g.vline(bx1 - 1, 47, 123, wall[1]);
+  g.rect(bx0, 124, 68, 6, STONE[2]);
+  g.hline(bx0, bx1, 124, STONE[1]);
+  // 삼각 지붕과 시계
+  for (let y = 10; y <= 45; y++) {
+    const half = Math.round(((y - 9) / 36) * 42);
+    roofLine(g, cx - half, cx + half - 1, y, roof);
+    if (y >= 20 && y <= 42 && half > 12) g.hline(cx - half + 8, cx + half - 9, y, wall[0]);
+  }
+  g.hline(cx - 42, cx + 41, 45, roof[2]);
+  g.hline(cx - 42, cx + 41, 46, OUTLINE);
+  g.ellipse(cx - 11, 21, cx + 10, 42, OUTLINE);
+  g.ellipse(cx - 10, 22, cx + 9, 41, '#fffaf0');
+  g.vline(cx, 25, 32, OUTLINE);
+  g.hline(cx, cx + 5, 32, OUTLINE);
+  [[0, -9], [0, 8], [-9, 0], [8, 0]].forEach(([dx, dy]) => g.set(cx + dx, 32 + dy, '#9a8a6a'));
+  // 2층 창문과 띠 장식, 현판
+  for (const x of [cx - 26, cx - 6, cx + 14]) windowAt(g, x, 53, wall[2]);
+  g.rect(bx0, 74, 68, 4, STONE[1]);
+  g.hline(bx0, bx1, 77, STONE[2]);
+  g.rect(cx - 22, 80, 44, 9, OUTLINE);
+  g.rect(cx - 21, 81, 42, 7, '#3f6fb0');
+  for (let x = cx - 17; x <= cx + 15; x += 5) g.rect(x, 83, 3, 3, '#ffffff');
+  // 현관: 기둥 두 개가 받치는 지붕 아래 큰 양문
+  g.rect(cx - 29, 91, 58, 4, STONE[0]);
+  g.hline(cx - 29, cx + 28, 94, STONE[2]);
+  g.rect(cx - 15, 104, 30, 26, OUTLINE);
+  g.ellipse(cx - 15, 96, cx + 14, 112, OUTLINE);
+  g.ellipse(cx - 14, 97, cx + 13, 111, '#8fd0ff');
+  g.rect(cx - 14, 105, 28, 25, '#2f6fb0');
+  g.hline(cx - 14, cx + 13, 104, '#ffd23d');
+  g.vline(cx - 1, 105, 129, '#245890');
+  g.vline(cx, 105, 129, '#245890');
+  g.rect(cx - 11, 108, 7, 9, '#8fd0ff');
+  g.rect(cx + 4, 108, 7, 9, '#8fd0ff');
+  g.set(cx - 3, 120, '#ffd23d');
+  g.set(cx + 2, 120, '#ffd23d');
+  for (const x of [cx - 26, cx + 19]) {
+    g.rect(x, 95, 7, 29, '#fffaf0');
+    g.vline(x + 5, 97, 121, STONE[1]);
+    g.vline(x + 6, 97, 121, STONE[2]);
+    g.rect(x - 1, 95, 9, 3, STONE[0]);
+    g.hline(x - 1, x + 7, 97, STONE[2]);
+    g.rect(x - 1, 121, 9, 3, STONE[1]);
+  }
+  // 계단
+  g.rect(cx - 30, 130, 60, 3, STONE[0]);
+  g.rect(cx - 35, 133, 70, 3, STONE[1]);
+  g.rect(cx - 40, 136, 80, 4, STONE[2]);
+  g.hline(cx - 30, cx + 29, 132, STONE[2]);
+  g.hline(cx - 35, cx + 34, 135, STONE[3]);
+  // 깃발
+  g.vline(cx, 0, 9, '#7a7a8e');
+  g.rect(cx + 1, 1, 11, 7, '#ffcf2e');
+  g.hline(cx + 1, cx + 11, 7, '#e39b12');
+  g.rect(cx + 4, 3, 3, 2, '#ffffff');
+  return doneFramed(g);
+}
+
+// ───────── 건물 안에 놓는 것 ─────────
+
+// 교탁
+function lectern() {
+  const g = new Grid(30, 32);
+  g.rect(1, 6, 28, 6, WOOD[0]);
+  g.hline(1, 28, 6, '#f6d3a8');
+  g.rect(3, 12, 24, 18, WOOD[1]);
+  g.rect(3, 12, 24, 2, WOOD[2]);
+  g.rect(7, 16, 16, 10, WOOD[2]);
+  g.rect(8, 17, 14, 8, WOOD[1]);
+  g.rect(2, 30, 26, 2, WOOD[3]);
+  g.rect(9, 2, 12, 5, '#ffffff');
+  g.vline(15, 2, 6, '#c9c9d6');
+  g.hline(10, 13, 4, '#9fb0c8');
+  g.hline(17, 19, 4, '#9fb0c8');
+  return done(g);
+}
+
+// 게시판: 벽에 건다
+function noticeBoard() {
+  const g = new Grid(50, 36);
+  g.rect(0, 0, 50, 34, WOOD[2]);
+  g.rect(2, 2, 46, 30, '#d9a066');
+  for (let i = 0; i < 40; i++) g.set(3 + ((i * 17) % 44), 3 + ((i * 11) % 28), '#c98f56');
+  [[5, 5, 11, 9, '#ffffff'], [19, 4, 10, 12, '#ffe98a'], [32, 6, 12, 8, '#9ad6ff'], [6, 18, 9, 10, '#ffb3a8'], [18, 19, 13, 9, '#ffffff'], [34, 17, 10, 11, '#a8ef7a']].forEach(([x, y, w, h, c]) => {
+    g.rect(x, y, w, h, c);
+    g.hline(x + 2, x + w - 3, y + 3, '#9a8a6a');
+    g.hline(x + 2, x + w - 4, y + 5, '#9a8a6a');
+    g.set(x + Math.floor(w / 2), y, '#e2553f');
+  });
+  return done(g);
+}
+
+// 벽 창문: 커튼이 달린 큰 창
+function wallWindow() {
+  const g = new Grid(36, 38);
+  g.rect(2, 2, 32, 30, '#fffaf0');
+  g.rect(4, 4, 28, 26, '#8fd0ff');
+  g.rect(5, 5, 10, 8, '#d8f1ff');
+  g.rect(20, 14, 8, 5, '#b9e2ff');
+  g.vline(17, 4, 29, '#fffaf0');
+  g.vline(18, 4, 29, '#fffaf0');
+  g.hline(4, 31, 16, '#fffaf0');
+  for (const x of [4, 5, 6, 29, 30, 31]) g.vline(x, 4, 27, x === 6 || x === 29 ? '#e39b12' : '#ffcf2e');
+  g.rect(0, 32, 36, 4, STONE[1]);
+  g.hline(0, 35, 35, STONE[3]);
+  g.rect(0, 0, 36, 3, WOOD[2]);
+  return done(g);
+}
+
+// 벽시계
+function wallClock() {
+  const g = new Grid(20, 20);
+  g.ellipse(0, 0, 19, 19, WOOD[2]);
+  g.ellipse(2, 2, 17, 17, '#fffaf0');
+  [[9, 3], [9, 16], [3, 9], [16, 9]].forEach(([x, y]) => g.rect(x, y, 2, 2, '#9a8a6a'));
+  g.vline(9, 5, 10, OUTLINE);
+  g.vline(10, 5, 10, OUTLINE);
+  g.hline(10, 14, 10, OUTLINE);
+  g.set(10, 10, '#e2553f');
+  return done(g);
+}
+
+// 시험장 접수대
+function reception() {
+  const g = new Grid(74, 38);
+  const gold = '#ffd23d';
+  g.rect(0, 12, 74, 7, '#b97a3c');
+  g.hline(0, 73, 12, '#d9a066');
+  g.rect(2, 19, 70, 17, '#7a4a12');
+  g.hline(2, 71, 19, gold);
+  g.hline(2, 71, 20, '#5a340a');
+  for (const x of [6, 28, 50]) {
+    g.rect(x, 23, 18, 10, '#8f5a1c');
+    g.rect(x + 1, 24, 16, 8, '#7a4a12');
+  }
+  g.rect(30, 26, 14, 4, gold);
+  g.rect(2, 36, 70, 2, '#4a2a08');
+  // 화면
+  g.rect(28, 0, 18, 12, OUTLINE);
+  g.rect(29, 1, 16, 9, '#8fd0ff');
+  g.rect(30, 2, 5, 3, '#d8f1ff');
+  g.rect(35, 11, 4, 2, '#7a7a8e');
+  // 서류와 종
+  g.rect(8, 9, 10, 5, '#ffffff');
+  g.hline(10, 15, 11, '#9fb0c8');
+  g.ellipse(56, 7, 64, 13, gold);
+  g.rect(59, 5, 2, 2, '#e39b12');
+  return done(g);
+}
+
+// 1인 시험 책상: 뒤와 양옆에 가림판
+function examDesk() {
+  const g = new Grid(38, 32);
+  g.rect(0, 0, 38, 14, '#9fb0c8');
+  g.hline(0, 37, 0, '#c8d4e6');
+  g.rect(3, 3, 32, 11, '#6a7f9e');
+  g.rect(0, 14, 3, 6, '#6a7f9e');
+  g.rect(35, 14, 3, 6, '#6a7f9e');
+  g.rect(2, 12, 34, 8, WOOD[0]);
+  g.hline(2, 35, 12, '#f6d3a8');
+  g.rect(2, 20, 34, 4, WOOD[2]);
+  g.rect(4, 24, 3, 8, WOOD[3]);
+  g.rect(31, 24, 3, 8, WOOD[3]);
+  g.rect(13, 13, 12, 6, '#ffffff');
+  g.hline(15, 22, 15, '#9fb0c8');
+  g.hline(15, 20, 17, '#9fb0c8');
+  g.rect(27, 14, 5, 2, '#3d55a8');
+  return done(g);
+}
+
+// 벽에 거는 현수막
+function wallBanner() {
+  const g = new Grid(22, 46);
+  const gold = '#ffd23d';
+  g.rect(0, 0, 22, 3, WOOD[2]);
+  g.rect(2, 3, 18, 32, '#d8423a');
+  for (let i = 0; i < 9; i++) g.hline(2 + i, 19 - i, 35 + i, '#d8423a');
+  g.vline(18, 3, 35, '#a8342a');
+  g.vline(19, 3, 35, '#a8342a');
+  g.hline(2, 19, 3, gold);
+  g.hline(2, 19, 4, gold);
+  g.map(7, 10, STAR, { y: gold });
+  g.hline(6, 15, 22, '#ffb3a8');
+  g.hline(6, 15, 26, '#ffb3a8');
+  return done(g);
+}
+
+// 기둥
+function pillar() {
+  const g = new Grid(20, 64);
+  g.rect(3, 6, 14, 52, '#fffaf0');
+  g.vline(6, 7, 57, STONE[0]);
+  g.vline(10, 7, 57, STONE[0]);
+  g.vline(13, 7, 57, STONE[1]);
+  g.vline(15, 6, 57, STONE[2]);
+  g.vline(16, 6, 57, STONE[2]);
+  g.rect(1, 2, 18, 4, STONE[0]);
+  g.rect(0, 0, 20, 2, STONE[1]);
+  g.hline(1, 18, 5, STONE[2]);
+  g.rect(1, 58, 18, 3, STONE[1]);
+  g.rect(0, 61, 20, 3, STONE[2]);
+  return done(g);
+}
+
+// 붉은 융단 한 칸 (32x32). 세로로 이어 붙여 통로를 만든다.
+function carpet() {
+  const g = new Grid(32, 32);
+  const gold = '#ffd23d';
+  g.rect(0, 0, 32, 32, '#d8423a');
+  g.rect(0, 0, 3, 32, gold);
+  g.rect(29, 0, 3, 32, gold);
+  g.vline(3, 0, 31, '#a8342a');
+  g.vline(28, 0, 31, '#a8342a');
+  for (let y = 4; y < 32; y += 8) {
+    g.rect(14, y, 4, 4, '#e8655c');
+    g.set(8, y + 2, '#e8655c');
+    g.set(23, y + 2, '#e8655c');
+  }
+  return g;
+}
+
+// ───────── 가까이 가면 보이는 건물 안 ─────────
+// 닫힌 건물 그림과 크기와 기준점이 같아서, 같은 자리에서 그림만 바꿔 끼우면 된다.
+// 지붕과 앞벽을 걷어 내고 위에서 내려다본 방 안을 작게 그린다.
+
+// 작은 책상과 의자. screen이 있으면 책상 위에 가림판을 세운다 (시험장).
+function miniDesk(g, x, y, chair, screen) {
+  if (screen) {
+    g.rect(x, y - 3, 14, 3, screen);
+    g.hline(x, x + 13, y - 3, OUTLINE);
+  }
+  g.rect(x, y, 14, 6, WOOD[0]);
+  g.hline(x, x + 13, y, OUTLINE);
+  g.rect(x, y + 6, 14, 3, WOOD[2]);
+  g.rect(x + 3, y + 2, 5, 3, '#ffffff');
+  g.rect(x + 4, y + 11, 6, 5, chair);
+  g.hline(x + 4, x + 9, y + 15, OUTLINE);
+}
+
+function miniPlant(g, x, y) {
+  g.ellipse(x, y, x + 9, y + 9, '#4fae4a');
+  g.ellipse(x + 1, y + 1, x + 5, y + 5, '#7ed36a');
+  g.rect(x + 2, y + 9, 6, 4, '#c9694f');
+  g.hline(x + 2, x + 7, y + 12, '#8f3f2e');
+}
+
+// 방의 틀: 뒷벽, 옆벽, 바닥, 낮은 앞벽(가운데는 문 자리로 비운다)
+function roomShell(g, { x0, x1, wallTop, floorTop, floorBot, wall, floor, cx }) {
+  // 뒷벽
+  g.rect(x0, wallTop, x1 - x0 + 1, floorTop - wallTop, wall[1]);
+  g.rect(x0, wallTop, x1 - x0 + 1, 3, wall[0]);
+  g.hline(x0, x1, floorTop - 1, wall[2]);
+  g.hline(x0, x1, floorTop - 2, wall[2]);
+  // 바닥
+  g.rect(x0, floorTop, x1 - x0 + 1, floorBot - floorTop + 1, floor[0]);
+  for (let y = floorTop + 7; y <= floorBot; y += 8) g.hline(x0, x1, y, floor[1]);
+  for (let y = floorTop, row = 0; y <= floorBot; y += 8, row++) {
+    for (let x = x0 + (row % 2 ? 6 : 14); x <= x1; x += 16) g.vline(x, y, Math.min(y + 6, floorBot), floor[1]);
+  }
+  // 옆벽
+  g.rect(x0, wallTop, 4, floorBot - wallTop + 1, wall[2]);
+  g.rect(x1 - 3, wallTop, 4, floorBot - wallTop + 1, wall[2]);
+  g.vline(x0 + 4, floorTop, floorBot, OUTLINE);
+  g.vline(x1 - 4, floorTop, floorBot, OUTLINE);
+  // 낮은 앞벽
+  g.rect(x0, floorBot + 1, x1 - x0 + 1, 6, STONE[1]);
+  g.hline(x0, x1, floorBot + 1, OUTLINE);
+  g.rect(x0, floorBot + 5, x1 - x0 + 1, 2, STONE[2]);
+  g.rect(cx - 14, floorBot + 1, 28, 6, floor[0]);
+  g.vline(cx - 15, floorBot + 1, floorBot + 6, OUTLINE);
+  g.vline(cx + 14, floorBot + 1, floorBot + 6, OUTLINE);
+}
+
+// 강의실 안: 칠판, 교탁, 책상 두 줄, 책장과 창문
+function schoolOpen() {
+  const w = 184;
+  const cx = 92;
+  const wall = ['#fff6dc', '#fbe7bf', '#e3c896'];
+  const g = new Grid(w, 142);
+  roomShell(g, { x0: 4, x1: w - 5, wallTop: 38, floorTop: 66, floorBot: 129, wall, floor: ['#f6e3ba', '#e6cc98'], cx });
+  // 칠판
+  g.rect(cx - 27, 43, 54, 18, OUTLINE);
+  g.rect(cx - 26, 44, 52, 16, WOOD[2]);
+  g.rect(cx - 24, 45, 48, 13, '#3f7a5c');
+  g.hline(cx - 20, cx - 6, 48, '#e8f5ee');
+  g.hline(cx - 20, cx + 4, 51, '#e8f5ee');
+  g.hline(cx - 20, cx - 10, 54, '#ffe98a');
+  g.rect(cx + 12, 47, 8, 7, '#e8f5ee');
+  // 창문과 벽시계
+  for (const x of [34, 50, w - 46, w - 62]) {
+    g.rect(x - 1, 44, 12, 14, OUTLINE);
+    g.rect(x, 45, 10, 12, '#8fd0ff');
+    g.rect(x + 1, 46, 3, 4, '#d8f1ff');
+    g.vline(x + 5, 45, 56, '#ffffff');
+  }
+  g.ellipse(w - 30, 43, w - 21, 52, OUTLINE);
+  g.ellipse(w - 29, 44, w - 22, 51, '#fffaf0');
+  g.vline(w - 26, 46, 48, OUTLINE);
+  g.hline(w - 26, w - 24, 48, OUTLINE);
+  // 책장
+  g.rect(9, 44, 18, 26, OUTLINE);
+  g.rect(10, 45, 16, 24, WOOD[2]);
+  for (const [y, colors] of [[47, ['#e2553f', '#3f8dff', '#ffd23d', '#4fae4a']], [55, ['#8f5ae0', '#ffd23d', '#e2553f', '#3f8dff']], [63, ['#4fae4a', '#e2553f', '#8f5ae0', '#ffa66b']]]) {
+    colors.forEach((c, i) => g.rect(11 + i * 4, y, 3, 5, c));
+  }
+  // 교탁
+  g.rect(cx - 12, 68, 24, 5, WOOD[1]);
+  g.hline(cx - 12, cx + 11, 68, OUTLINE);
+  g.rect(cx - 12, 73, 24, 5, WOOD[2]);
+  g.rect(cx - 3, 69, 6, 3, '#ffffff');
+  // 책상 두 줄. 가운데는 통로로 비운다
+  for (const y of [88, 108]) {
+    for (const x of [22, 44, 66]) {
+      miniDesk(g, x, y, '#f08a32');
+      miniDesk(g, w - 14 - x, y, '#f08a32');
+    }
+  }
+  miniPlant(g, 10, 114);
+  miniPlant(g, w - 20, 114);
+  // 문 앞 발판과 계단
+  g.rect(cx - 10, 124, 20, 5, '#3f6fb0');
+  g.hline(cx - 10, cx + 9, 124, '#7f96e6');
+  g.rect(cx - 20, 136, 40, 3, STONE[1]);
+  g.rect(cx - 25, 139, 50, 3, STONE[2]);
+  return doneFramed(g);
+}
+
+// 시험장 안: 접수대, 가림판이 있는 1인 책상, 가운데 붉은 융단, 현수막
+function examHallOpen() {
+  const w = 168;
+  const cx = 84;
+  const gold = '#ffd23d';
+  const g = new Grid(w, 122);
+  roomShell(g, { x0: 10, x1: w - 11, wallTop: 24, floorTop: 52, floorBot: 103, wall: ['#6a5aa8', '#4a3b7a', '#392c62'], floor: ['#c98f56', '#a9743f'], cx });
+  g.hline(10, w - 11, 27, gold);
+  // 융단
+  g.rect(cx - 9, 66, 18, 44, '#d8423a');
+  g.vline(cx - 9, 66, 109, gold);
+  g.vline(cx + 8, 66, 109, gold);
+  for (let y = 72; y <= 108; y += 8) g.hline(cx - 8, cx + 7, y, '#a8342a');
+  // 현판과 현수막, 벽시계
+  g.rect(cx - 15, 31, 30, 9, OUTLINE);
+  g.rect(cx - 14, 32, 28, 7, gold);
+  for (let x = cx - 10; x <= cx + 8; x += 5) g.rect(x, 34, 3, 3, '#7a4a12');
+  for (const x of [34, w - 46]) {
+    g.rect(x, 30, 12, 15, '#d8423a');
+    for (let i = 0; i < 6; i++) g.hline(x + i, x + 11 - i, 45 + i, '#d8423a');
+    g.hline(x, x + 11, 30, gold);
+    g.rect(x + 4, 35, 4, 4, gold);
+  }
+  g.ellipse(w - 30, 31, w - 21, 40, OUTLINE);
+  g.ellipse(w - 29, 32, w - 22, 39, '#fffaf0');
+  g.vline(w - 26, 34, 36, OUTLINE);
+  g.hline(w - 26, w - 24, 36, OUTLINE);
+  // 트로피 진열장
+  g.rect(15, 32, 16, 24, OUTLINE);
+  g.rect(16, 33, 14, 22, '#7a4a12');
+  g.rect(17, 34, 12, 9, '#b97a3c');
+  g.rect(17, 45, 12, 9, '#b97a3c');
+  for (const [x, y] of [[19, 37], [24, 37], [21, 48]]) {
+    g.rect(x, y, 4, 3, gold);
+    g.rect(x + 1, y + 3, 2, 2, '#e39b12');
+  }
+  // 접수대와 화면
+  g.rect(cx - 24, 54, 48, 6, '#b97a3c');
+  g.hline(cx - 24, cx + 23, 54, OUTLINE);
+  g.rect(cx - 24, 60, 48, 5, '#7a4a12');
+  g.hline(cx - 24, cx + 23, 60, gold);
+  g.rect(cx - 5, 49, 10, 7, OUTLINE);
+  g.rect(cx - 4, 50, 8, 5, '#8fd0ff');
+  g.rect(cx + 12, 55, 6, 3, '#ffffff');
+  // 1인 책상: 양쪽에 두 줄씩, 간격을 띄운다
+  for (const y of [69, 85]) {
+    for (const x of [20, 42]) {
+      miniDesk(g, x, y, '#3d55a8', '#9fb0c8');
+      miniDesk(g, w - 14 - x, y, '#3d55a8', '#9fb0c8');
+    }
+  }
+  // 앞쪽 기둥 밑동: 닫힌 모습의 기둥 자리
+  for (const x of [14, 50, 106, 142]) {
+    g.rect(x - 2, 101, 16, 9, STONE[0]);
+    g.hline(x - 2, x + 13, 101, OUTLINE);
+    g.hline(x - 2, x + 13, 105, STONE[2]);
+    g.rect(x - 2, 107, 16, 3, STONE[1]);
+  }
+  // 계단과 융단
+  g.rect(6, 110, w - 12, 4, STONE[0]);
+  g.rect(3, 114, w - 6, 4, STONE[1]);
+  g.rect(0, 118, w, 4, STONE[2]);
+  g.hline(6, w - 7, 113, STONE[2]);
+  g.hline(3, w - 4, 117, STONE[3]);
+  g.rect(cx - 14, 110, 28, 12, '#d8423a');
+  g.vline(cx - 14, 110, 121, gold);
+  g.vline(cx + 13, 110, 121, gold);
+  g.hline(cx - 13, cx + 12, 113, '#a8342a');
+  g.hline(cx - 13, cx + 12, 117, '#a8342a');
+  return doneFramed(g);
+}
+
 export const OBJECTS = {
+  lectern: { label: '교탁', draw: lectern },
+  noticeboard: { label: '게시판', draw: noticeBoard },
+  window: { label: '벽 창문', draw: wallWindow },
+  clock: { label: '벽시계', draw: wallClock },
+  reception: { label: '시험장 접수대', draw: reception },
+  examdesk: { label: '1인 시험 책상', draw: examDesk },
+  banner: { label: '현수막', draw: wallBanner },
+  pillar: { label: '기둥', draw: pillar },
+  carpet: { label: '붉은 융단', draw: carpet, flat: true },
+  school_open: { label: '강의실 안 (가까이 갔을 때)', draw: schoolOpen },
+  examhall_open: { label: '시험장 안 (가까이 갔을 때)', draw: examHallOpen },
+  mainhall: { label: '광장 본관', draw: mainHall },
+  school: { label: '강의실 (학교)', draw: school },
+  examhall: { label: '시험장', draw: examHall },
   tree: { label: '둥근 나무', draw: () => treeRound(1) },
   tree2: { label: '둥근 나무 2', draw: () => treeRound(2) },
   pine: { label: '소나무', draw: treePine },
