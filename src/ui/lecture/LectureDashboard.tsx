@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { errorMessage, FRESH_ON_OPEN, queries, type LectureSummary } from '../../api';
+import { errorMessage, FRESH_ON_OPEN, lectureQueries, type LectureSummary } from '../../api';
 import { useSession } from '../../session/SessionProvider';
 import { Button, Chip, Loading, Notice, ProgressBar } from '../kit';
 import { COMPLETE_RATE, formatTime, lectureStatus, percent, tasksForLecture } from './format';
@@ -10,7 +10,7 @@ import { COMPLETE_RATE, formatTime, lectureStatus, percent, tasksForLecture } fr
 export function LectureDashboard({ onOpen }: { onOpen: (lectureId: number) => void }) {
     const { tasks } = useSession();
     // 창을 열 때마다 최신 수강률을 받는다. 그동안에는 저장해 둔 값을 먼저 보여 준다
-    const { data, error, refetch, isFetching } = useQuery({ ...queries.lectures(), ...FRESH_ON_OPEN });
+    const { data, error, refetch, isFetching } = useQuery({ ...lectureQueries.dashboard(), ...FRESH_ON_OPEN });
 
     if (!data && error) {
         return (

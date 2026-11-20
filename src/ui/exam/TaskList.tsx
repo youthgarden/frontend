@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { errorMessage, FRESH_ON_OPEN, queries, type TaskSummary } from '../../api';
+import { errorMessage, FRESH_ON_OPEN, taskQueries, type TaskSummary } from '../../api';
 import { useSession } from '../../session/SessionProvider';
 import { Button, Chip, Dialog, LevelBadge, Loading, Notice } from '../kit';
 import type { TaskRef } from './util';
@@ -21,7 +21,7 @@ export function TaskList({ onPick, onOpenLecture, onBack, onClose }: {
 }) {
     const { me } = useSession();
     // 방금 강의를 듣고 왔을 수 있다. 창을 열 때마다 최신 응시 가능 여부를 받는다
-    const query = useQuery({ ...queries.tasks(), ...FRESH_ON_OPEN });
+    const query = useQuery({ ...taskQueries.list(), ...FRESH_ON_OPEN });
     const tasks = query.data ?? null;
     const error = !tasks && query.error ? errorMessage(query.error) : null;
 

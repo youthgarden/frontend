@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-    api, invalidateLectureProgress, queries, refreshAccessToken, setAccessToken, setSessionLostHandler, useLectures, useTasks,
+    api, invalidateLectureProgress, refreshAccessToken, setAccessToken, setSessionLostHandler, useLectures, userQueries, useTasks,
     type LectureDashboard, type Me, type TaskSummary,
 } from '../api';
 
@@ -66,7 +66,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const reloadMe = useCallback(async () => {
         try {
             // 저장해 둔 값을 쓰지 않고 반드시 새로 받는다
-            const next = await queryClient.fetchQuery({ ...queries.me(), staleTime: 0 });
+            const next = await queryClient.fetchQuery({ ...userQueries.me(), staleTime: 0 });
             setMe(next);
             return next;
         } catch {
@@ -75,7 +75,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }, [queryClient]);
 
     const enter = useCallback(async () => {
-        setMe(await queryClient.fetchQuery({ ...queries.me(), staleTime: 0 }));
+        setMe(await queryClient.fetchQuery({ ...userQueries.me(), staleTime: 0 }));
         setStatus('authed');
     }, [queryClient]);
 
