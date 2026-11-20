@@ -57,17 +57,20 @@ const WALLS: [x: number, y: number, w: number, h: number][] = [
 const SPAWN: [number, number] = [480, 440]; // 분수 앞. 접속 시작 위치
 
 // ── 건물 ── 이름표 위치와 문 앞 위치. 문 앞에서 F나 스페이스를 누르면 들어간다.
-const BUILDINGS: { place: Place; label: string; labelAt: [number, number]; door: [number, number] }[] = [
-    { place: 'classroom', label: '강의실', labelAt: [4.5 * T, 9 * T - 154], door: [4.5 * T, 9 * T + 12] },
-    { place: 'exam', label: '시험장', labelAt: [25.5 * T, 9 * T - 134], door: [25.5 * T, 9 * T + 12] },
+// key는 OBJECTS에 놓인 건물 그림. 문 근처에 가면 `${key}_open`(건물 안이 보이는 그림)으로 바뀐다.
+const BUILDINGS: { place: Place; key: string; label: string; labelAt: [number, number]; door: [number, number] }[] = [
+    { place: 'classroom', key: 'school', label: '강의실', labelAt: [4.5 * T, 9 * T - 154], door: [4.5 * T, 9 * T + 12] },
+    { place: 'exam', key: 'examhall', label: '시험장', labelAt: [25.5 * T, 9 * T - 134], door: [25.5 * T, 9 * T + 12] },
 ];
 const DOOR_REACH = 26;
+const OPEN_REACH = 90; // 문에서 이 거리 안에 들어오면 건물 안이 보인다
 
 export class World extends Scene {
     private player: Player;
     private others: RemotePlayers;
     private hint: Phaser.GameObjects.Text;
     private ground: string[][];
+    private buildingImages: Map<string, Phaser.GameObjects.Image>;
 
     constructor() {
         super('World');
@@ -90,8 +93,10 @@ export class World extends Scene {
         }));
 
         // 아래에 있는 것이 앞에 오도록 y를 depth로 쓴다
+        this.buildingImages = new Map();
         for (const [key, x, y] of OBJECTS) {
-            this.add.image(x * S, y * S, `yg-obj-${key}`).setOrigin(0.5, 1).setScale(S).setDepth(FLAT.has(key) ? -1 : y * S);
+            const img = this.add.image(x * S, y * S, `yg-obj-${key}`).setOrigin(0.5, 1).setScale(S).setDepth(FLAT.has(key) ? -1 : y * S);
+            if (BUILDINGS.some((b) => b.key === key)) this.buildingImages.set(key, img);
         }
 
         this.add.text(480 * S, (7 * T - 152) * S, '광장', LABEL_STYLE).setOrigin(0.5).setDepth(100000);
@@ -134,6 +139,14 @@ export class World extends Scene {
 
         const px = this.player.x / S;
         const py = this.player.y / S;
+        // 문 근처에 가면 건물이 열려 안이 보이고, 멀어지면 다시 닫힌다
+        for (const b of BUILDINGS) {
+            const open = Math.hypot(px - b.door[0], py - b.door[1]) < OPEN_REACH;
+            const texture = `yg-obj-${b.key}${open ? '_open' : ''}`;
+            const img = this.buildingImages.get(b.key);
+            if (img && img.texture.key !== texture) img.setTexture(texture);
+        }
+
         const building = BUILDINGS.find((b) => Math.hypot(px - b.door[0], py - b.door[1]) < DOOR_REACH);
         this.hint.setVisible(!!building);
         if (!building) return;
