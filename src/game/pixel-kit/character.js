@@ -379,18 +379,20 @@ function hairSide(g, s) {
   for (let y = 11; y <= 32; y++)
     for (let x = 5 - st.puff; x <= 32; x++) {
       const outside = x < 5;
-      const back = x <= 17 && y <= st.nape && (headIn(x, y) || (outside && y >= 14 && y <= st.nape - 3));
+      // 귀가 보이는 머리는 귀 뒤(x 13~17)에서 귀 위까지만 덮는다. 아래까지 덮으면 볼에 어두운 선이 생긴다
+      const bottom = !st.coversEars && x >= 13 ? 22 : st.nape;
+      const back = x <= 17 && y <= bottom && (headIn(x, y) || (outside && y >= 14 && y <= st.nape - 3));
       // 앞모습의 옆머리(귀 옆으로 길게 내려오는 부분)는 옆모습에서 얼굴 앞을 덮지 않도록 눈썹 높이에서 자른다
       const brow = Math.min(st.fringe[x - 5], 21);
       const fr = x >= 18 && headIn(x, y) && y <= brow;
       const burn = x >= 18 && x <= 19 && y <= 24 && headIn(x, y);
       if (!(back || fr || burn)) continue;
-      const edge = (back && y >= st.nape - 1) || (fr && y === brow);
+      const edge = (back && y >= bottom - 1) || (fr && y === brow);
       g.set(x, y, edge ? hd : hb);
     }
   g.hline(8, 11, 15, hh);
   g.hline(9, 10, 16, hh);
-  for (const x of [9, 13]) g.vline(x, 18, st.nape - 3, hd);
+  for (const x of st.coversEars ? [9, 13] : [9]) g.vline(x, 18, st.nape - 3, hd);
 }
 
 // 등 뒤로 내려오는 머리 덩어리. half가 true면 옆모습용으로 뒤쪽 절반만 그린다.
@@ -417,6 +419,13 @@ function hairMass(g, s, half) {
   }
 }
 
+// 포니테일의 줄별 폭 [안쪽, 바깥쪽]. 0이 머리에 붙는 쪽이고 y 15부터 한 줄씩 내려간다.
+const PONY_ROWS = [
+  [0, 3], [0, 4], [0, 5], [1, 6], [1, 6], [1, 6], [1, 7],
+  [2, 7], [2, 7], [2, 7], [2, 7], [2, 7], [2, 7], [2, 7], [2, 7],
+  [2, 6], [2, 6], [2, 6], [2, 6], [2, 6], [3, 6], [3, 6], [3, 6], [4, 7], [5, 7], [6, 7],
+];
+
 function drawTails(g, s, view) {
   const st = s.st;
   if (!st.tail) return;
@@ -428,10 +437,17 @@ function drawTails(g, s, view) {
     g.vline(x0 + 2, y0 + 3, y0 + 7, hh);
   };
   if (st.tail === 'pony') {
-    if (view === 'down') { blob(31, 13, 40, 30); blob(34, 27, 41, 41); g.rect(31, 17, 2, 3, tie); }
-    // 옆으로 묶은 머리라서 뒷모습에서는 앞모습과 좌우가 뒤집힌 자리에 온다
-    if (view === 'up') { blob(-3, 13, 6, 30); blob(-4, 27, 3, 41); g.rect(5, 17, 2, 3, tie); }
-    if (view === 'right') { blob(-3, 14, 6, 31); blob(-3, 28, 3, 41); g.rect(5, 18, 2, 3, tie); }
+    // 옆으로 묶은 머리. 앞모습에서는 오른쪽, 뒷모습과 옆모습에서는 왼쪽(머리 뒤)에 온다.
+    const at = view === 'down' ? (dx) => 33 + dx : (dx) => 4 - dx;
+    PONY_ROWS.forEach(([a, b], i) => {
+      const y = 15 + i;
+      for (let dx = a; dx <= b; dx++) {
+        const last = i === PONY_ROWS.length - 1;
+        g.set(at(dx), y, dx === b || last ? hd : dx === a + 1 && y >= 22 && y <= 29 ? hh : hb);
+      }
+    });
+    // 머리끈. 머리 테두리에 가려지지 않게 머리에서 두 칸 떨어뜨린다
+    for (const dx of [2, 3]) g.vline(at(dx), 17, 19, tie);
   } else {
     if (view === 'down' || view === 'up') {
       blob(-3, 19, 5, 38);
