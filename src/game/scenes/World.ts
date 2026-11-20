@@ -1,0 +1,142 @@
+import { Scene } from 'phaser';
+import { on, type Place } from '../../events';
+import { HINT_STYLE, LABEL_STYLE, S, ensureAssets, travel } from '../assets';
+import { Player } from '../player';
+import { TILE } from '../pixel-kit/index.js';
+
+// 광장. 강의실과 시험장은 닫힌 건물로만 보이고, 문 앞에서 들어가면 Room 장면으로 바뀐다.
+// 좌표는 픽셀 키트의 논리 좌표로 적고 화면에는 S배로 그린다.
+const COLS = 30;
+const ROWS = 22;
+const WIDTH = COLS * TILE;
+const HEIGHT = ROWS * TILE;
+const T = TILE;
+
+// ── 바닥 ── 타일 칸 단위. 나중 줄이 앞 줄을 덮는다.
+const FLOOR: [x0: number, y0: number, x1: number, y1: number, tile: string][] = [
+    [9, 7, 20, 15, 'plaza'], // 광장
+    [0, 9, 8, 10, 'path'],
+    [21, 9, 29, 10, 'path'],
+    [14, 16, 15, 16, 'path'],
+    [0, 17, 29, 18, 'water'],
+    [14, 17, 15, 18, 'bridge'],
+    [7, 19, 22, 21, 'sand'],
+];
+
+// ── 놓인 것들 ── [그림, x, y]. (x, y)는 그림의 아래쪽 가운데.
+const OBJECTS: [key: string, x: number, y: number][] = [
+    // 숲
+    ['pine', 30, 70], ['tree', 80, 96], ['tree2', 236, 92], ['pine', 300, 74], ['tree', 340, 104], ['tree2', 620, 104],
+    ['pine', 660, 76], ['tree', 720, 94], ['pine', 900, 72], ['tree2', 940, 100], ['bush', 270, 200], ['bush', 700, 206],
+    // 광장
+    ['hall', 480, 7 * T], ['fountain', 480, 13.6 * T], ['plant', 418, 7 * T + 14], ['plant', 542, 7 * T + 14],
+    ['lamp', 9.4 * T, 8.6 * T], ['lamp', 20.6 * T, 8.6 * T], ['lamp', 9.4 * T, 15.6 * T], ['lamp', 20.6 * T, 15.6 * T],
+    ['bench', 11.6 * T, 13.4 * T], ['bench', 18.4 * T, 13.4 * T],
+    ['flowers', 8.2 * T, 8.4 * T], ['flowers', 21.8 * T, 8.4 * T], ['flowers', 12 * T, 16.7 * T], ['flowers', 18 * T, 16.7 * T],
+    ['sign', 7.3 * T, 8.6 * T], ['sign', 22.7 * T, 8.6 * T],
+    // 건물
+    ['classroom', 4.5 * T, 9 * T], // 강의실
+    ['library', 25.5 * T, 9 * T], // 시험장
+    // 강가와 아래쪽
+    ['bush', 1.2 * T, 16.9 * T], ['bush', 10 * T, 16.9 * T], ['bush', 20 * T, 16.9 * T], ['bush', 28.8 * T, 16.9 * T],
+    ['rock', 7.6 * T, 21.6 * T], ['rock', 22.4 * T, 21.4 * T],
+    ['tree', 2 * T, 21.8 * T], ['pine', 4.8 * T, 21.6 * T], ['tree2', 25.4 * T, 21.8 * T], ['pine', 28.2 * T, 21.6 * T],
+];
+const FLAT = new Set(['flowers']); // 바닥에 깔리는 그림. 캐릭터가 위로 지나간다.
+
+// ── 지나갈 수 없는 곳 ── [x, y, 너비, 높이]. 건물 아랫부분과 분수.
+// ponytail: 나무, 벤치 같은 작은 것은 막지 않는다. 필요해지면 여기에 추가하거나 Tiled 충돌 레이어로 바꾼다.
+const WALLS: [x: number, y: number, w: number, h: number][] = [
+    [396, 180, 168, 44], // 본관
+    [84, 244, 120, 44], // 강의실 건물
+    [752, 244, 128, 44], // 시험장 건물
+    [456, 410, 48, 26], // 분수
+];
+
+const SPAWN: [number, number] = [480, 466]; // 분수 앞. 접속 시작 위치
+
+// ── 건물 ── 이름표 위치와 문 앞 위치. 문 앞에서 F나 스페이스를 누르면 들어간다.
+const BUILDINGS: { place: Place; label: string; labelAt: [number, number]; door: [number, number] }[] = [
+    { place: 'classroom', label: '강의실', labelAt: [4.5 * T, 9 * T - 81], door: [4.5 * T, 9 * T + 12] },
+    { place: 'exam', label: '시험장', labelAt: [25.5 * T, 9 * T - 85], door: [25.5 * T, 9 * T + 12] },
+];
+const DOOR_REACH = 26;
+
+export class World extends Scene {
+    private player: Player;
+    private hint: Phaser.GameObjects.Text;
+    private ground: string[][];
+
+    constructor() {
+        super('World');
+    }
+
+    // from: 방금 나온 건물. 그 문 앞에서 시작한다.
+    create(data: { from?: Place }) {
+        const tileIndex = ensureAssets(this);
+
+        // 바닥: 잔디를 깔고 그 위에 FLOOR를 덮는다
+        this.ground = Array.from({ length: ROWS }, (_, y) => Array.from({ length: COLS }, (_, x) => {
+            const h = Math.abs((x * 73856093) ^ (y * 19349663));
+            return h % 23 === 0 ? 'grass_flower' : h % 3 === 0 ? 'grass2' : 'grass';
+        }));
+        for (const [x0, y0, x1, y1, tile] of FLOOR) {
+            for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) this.ground[y][x] = tile;
+        }
+        this.ground.forEach((row, y) => row.forEach((tile, x) => {
+            this.add.image(x * TILE * S, y * TILE * S, 'yg-tiles', tileIndex[tile]).setOrigin(0).setScale(S).setDepth(-2);
+        }));
+
+        // 아래에 있는 것이 앞에 오도록 y를 depth로 쓴다
+        for (const [key, x, y] of OBJECTS) {
+            this.add.image(x * S, y * S, `yg-obj-${key}`).setOrigin(0.5, 1).setScale(S).setDepth(FLAT.has(key) ? -1 : y * S);
+        }
+
+        this.add.text(480 * S, (7 * T - 100) * S, '광장', LABEL_STYLE).setOrigin(0.5).setDepth(100000);
+        for (const { label, labelAt } of BUILDINGS) {
+            this.add.text(labelAt[0] * S, labelAt[1] * S, label, LABEL_STYLE).setOrigin(0.5).setDepth(100000);
+        }
+
+        // 건물에서 나오면 문에서 조금 떨어져 시작한다. 문 앞에서 시작하면 누르고 있던 키 때문에 곧바로 다시 들어가 버린다.
+        const out = BUILDINGS.find((b) => b.place === data.from)?.door;
+        const [sx, sy] = out ? [out[0], out[1] + 36] : SPAWN;
+        this.player = new Player(this, sx * S, sy * S, (x, y) => this.canWalk(x / S, y / S));
+
+        // 화면에 고정된 안내 문구
+        this.hint = this.add
+            .text(this.scale.width / 2, this.scale.height - 90, '', HINT_STYLE)
+            .setOrigin(0.5)
+            .setScrollFactor(0)
+            .setDepth(100001)
+            .setVisible(false);
+
+        // 맵이 화면보다 커서 카메라가 캐릭터를 따라간다
+        this.cameras.main.setBounds(0, 0, WIDTH * S, HEIGHT * S).startFollow(this.player.body, true, 0.15, 0.15);
+
+        // 화면에서 '시험장으로 이동' 같은 버튼을 누르면 그 공간으로 간다
+        const off = on('goto', (place) => {
+            if (place === 'plaza') this.player.moveTo(SPAWN[0] * S, SPAWN[1] * S);
+            else travel(this, place);
+        });
+        this.events.once('shutdown', off);
+    }
+
+    update(_time: number, delta: number) {
+        this.player.update(delta);
+
+        const px = this.player.x / S;
+        const py = this.player.y / S;
+        const building = BUILDINGS.find((b) => Math.hypot(px - b.door[0], py - b.door[1]) < DOOR_REACH);
+        this.hint.setVisible(!!building);
+        if (!building) return;
+        this.hint.setText(`F 또는 Space: ${building.label} 들어가기`);
+        if (this.player.pressedInteract()) travel(this, building.place);
+    }
+
+    // 논리 좌표 (x, y)에 서 있을 수 있는가: 맵 안이고, 물이 아니고, 건물이나 분수가 아니다
+    private canWalk(x: number, y: number) {
+        if (x < 8 || x > WIDTH - 8 || y < 16 || y > HEIGHT - 4) return false;
+        if (this.ground[Math.floor(y / TILE)]?.[Math.floor(x / TILE)] === 'water') return false;
+        return !WALLS.some(([wx, wy, w, h]) => x >= wx && x <= wx + w && y >= wy && y <= wy + h);
+    }
+}
