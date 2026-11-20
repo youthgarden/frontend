@@ -1,6 +1,8 @@
 import { Geom, Scene } from 'phaser';
+import { EXAMINER_SPEC } from '../../character';
 import { emit, on, type GameEvents, type Place } from '../../events';
 import { HINT_STYLE, LABEL_STYLE, S, ensureAssets, travel } from '../assets';
+import { CharacterView } from '../character/CharacterView';
 import { Player } from '../player';
 import { TILE } from '../pixel-kit/index.js';
 
@@ -87,8 +89,14 @@ export class Room extends Scene {
 
         this.add.text(sx(FLOOR.x), sy(FLOOR.y - 56), room.label, LABEL_STYLE).setOrigin(0, 0.5);
 
+        // 시험장 접수 책상 옆의 AI 시험관. 장식이라 막지 않는다. 책상 바로 뒤에 세우면 말을 걸러 온 캐릭터에 가려진다.
+        if (this.place === 'exam') {
+            new CharacterView(this, { key: 'yg-npc-examiner', spec: EXAMINER_SPEC, name: 'AI 시험관', level: null, badge: 'AI', x: sx(312), y: sy(104), scale: S });
+        }
+
         // 문에서 조금 떨어져 시작한다. 문 앞에서 시작하면 누르고 있던 키 때문에 곧바로 다시 나가 버린다.
         this.player = new Player(this, sx(DOOR[0]), sy(DOOR[1] - 44), (x, y) => this.canWalk(x, y));
+        emit('place', this.place);
 
         this.hint = this.add
             .text(this.scale.width / 2, this.scale.height - 20, '', HINT_STYLE)
@@ -101,6 +109,8 @@ export class Room extends Scene {
             if (place !== this.place) travel(this, place);
         });
         this.events.once('shutdown', off);
+        // 게임이 통째로 부서질 때는 shutdown이 오지 않는다. 구독이 남으면 부서진 장면이 goto를 받아 예외가 난다
+        this.events.once('destroy', off);
     }
 
     update(_time: number, delta: number) {

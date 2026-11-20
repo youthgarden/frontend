@@ -1,6 +1,7 @@
 import { Scene } from 'phaser';
-import { on, type Place } from '../../events';
+import { emit, on, type Place } from '../../events';
 import { HINT_STYLE, LABEL_STYLE, S, ensureAssets, travel } from '../assets';
+import { RemotePlayers } from '../net/RemotePlayers';
 import { Player } from '../player';
 import { TILE } from '../pixel-kit/index.js';
 
@@ -64,6 +65,7 @@ const DOOR_REACH = 26;
 
 export class World extends Scene {
     private player: Player;
+    private others: RemotePlayers;
     private hint: Phaser.GameObjects.Text;
     private ground: string[][];
 
@@ -101,6 +103,9 @@ export class World extends Scene {
         const out = BUILDINGS.find((b) => b.place === data.from)?.door;
         const [sx, sy] = out ? [out[0], out[1] + 36] : SPAWN;
         this.player = new Player(this, sx * S, sy * S, (x, y) => this.canWalk(x / S, y / S));
+        // 다른 접속자. 연결은 게임 단위로 유지되고, 이 장면은 그리기와 내 위치 알리기만 한다
+        this.others = new RemotePlayers(this, this.player, S);
+        emit('place', 'plaza');
 
         // 화면에 고정된 안내 문구
         this.hint = this.add
@@ -119,10 +124,13 @@ export class World extends Scene {
             else travel(this, place);
         });
         this.events.once('shutdown', off);
+        // 게임이 통째로 부서질 때는 shutdown이 오지 않는다. 구독이 남으면 부서진 장면이 goto를 받아 예외가 난다
+        this.events.once('destroy', off);
     }
 
     update(_time: number, delta: number) {
         this.player.update(delta);
+        this.others.update(delta);
 
         const px = this.player.x / S;
         const py = this.player.y / S;
