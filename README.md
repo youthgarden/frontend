@@ -14,9 +14,14 @@
 npm install
 npm run dev      # 개발 서버
 npm run build    # 타입 검사 + 배포용 빌드
+npm test         # 단위 테스트
 ```
 
 Node 20 이상이 필요하다.
+
+백엔드 없이도 동작한다. `npm run dev`를 실행하면 모의 서버(`mock/`)가 `/api/v1`에 응답한다.
+계정과 검수용 조작은 [`docs/mock-server.md`](docs/mock-server.md)에 있다.
+실제 백엔드에 연결하려면 `.env.example`을 `.env.local`로 복사해 `API_TARGET`에 주소를 적는다.
 
 ## 폴더 구조
 
@@ -26,7 +31,13 @@ src/
   App.tsx    최상위 컴포넌트
   game/      맵, 캐릭터 이동 등 Phaser 쪽 코드
   ui/        맵 위에 뜨는 화면 (React 컴포넌트)
+  api/       API 명세와 1:1인 타입과 통신 코드
+  session/   로그인 상태와 내 정보
+mock/        모의 서버 (개발 서버에서만 동작)
+docs/        계획, 의도, 판단 기록, ADR
 ```
+
+문서는 [`docs/direction/index.html`](docs/direction/index.html)(화면 정리)부터 읽는다.
 
 ## 작업 방식
 
