@@ -1,7 +1,7 @@
 import { http, type RequestOptions } from '../client';
 import type { LoginRequest, SignupRequest, SignupResponse, TokenResponse } from '../types';
 
-// 인증 (명세 2절). 담당자가 정해지면 이 파일을 맡는다.
+// 인증 (명세 2절). 배우는 쪽, 담당: 조가을
 
 /** 로그인, 가입, 로그아웃의 401은 토큰 만료가 아니다. 재발급을 시도하지 않는다 */
 const NO_AUTH: RequestOptions = { auth: false };

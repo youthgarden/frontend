@@ -2,7 +2,7 @@ import { queryOptions, useQuery } from '@tanstack/react-query';
 import { http, type RequestOptions } from '../client';
 import type { TaskDetail, TaskSummary } from '../types';
 
-// 과제 (명세 6절). 담당자가 정해지면 이 파일을 맡는다.
+// 과제 (명세 6절). 검증받는 쪽, 담당: 김균호
 // 지금 있는 조회는 여러 화면이 함께 보는 "과제 목록" 하나다. 나머지 조회와 변경 훅은 담당자가 필요할 때 더한다.
 
 export const taskApi = {

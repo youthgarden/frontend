@@ -1,48 +1,6 @@
 // 설계/2_API명세서.md의 응답 형식을 그대로 옮긴 타입.
 // 필드 이름은 명세를 따라 snake_case로 둔다. 화면에서 다른 이름으로 바꿔 쓰지 않는다.
-
-export type ErrorCode =
-    | 'INVALID_CREDENTIALS' | 'TOKEN_EXPIRED' | 'INVALID_TOKEN' | 'INVALID_REFRESH_TOKEN'
-    | 'LOGIN_ID_TAKEN' | 'INVALID_JOB'
-    | 'LECTURE_NOT_FOUND' | 'TASK_NOT_FOUND' | 'ATTEMPT_NOT_FOUND'
-    | 'LECTURE_NOT_COMPLETED'
-    | 'ATTEMPT_NOT_IN_PROGRESS' | 'ATTEMPT_ALREADY_IN_PROGRESS' | 'ATTEMPT_TIME_OVER' | 'ATTEMPT_NOT_REGRADABLE'
-    | 'AI_UNAVAILABLE'
-    // 아래 둘은 명세에 없고 프론트가 만든다: 서버에 닿지 못함 / 형식을 알 수 없는 응답
-    | 'NETWORK_ERROR' | 'UNKNOWN'
-    // 응답이 시간 안에 오지 않음 / 화면이 요청을 일부러 끊음
-    | 'TIMEOUT' | 'ABORTED';
-
-export interface Job { id: number; name: string }
-
-export interface SignupRequest { login_id: string; password: string; nickname: string; job_id: number }
-export interface SignupResponse { id: number; login_id: string; nickname: string; job: Job; level: number }
-export interface LoginRequest { login_id: string; password: string }
-export interface TokenResponse { access_token: string; token_type: 'bearer'; expires_in: number }
-
-export interface Me {
-    id: number;
-    login_id: string;
-    nickname: string;
-    job: Job;
-    /** 1~6. 6이 Lv.MAX */
-    level: number;
-    passed_task_count: number;
-    tutorial_seen: boolean;
-}
-
-export interface LectureSummary {
-    id: number;
-    title: string;
-    duration_sec: number;
-    /** 0~1 */
-    progress_rate: number;
-    completed: boolean;
-}
-export interface LectureDashboard { completed_count: number; total_count: number; lectures: LectureSummary[] }
-export interface LectureDetail extends LectureSummary { youtube_video_id: string; last_position_sec: number }
-export interface ProgressRequest { watched_ranges: [number, number][]; position_sec: number }
-export interface ProgressResponse { progress_rate: number; completed: boolean; just_completed: boolean }
+// 검증받는 쪽: 과제, 응시 (명세 6~7절). 담당: 김균호
 
 export interface TaskSummary {
     id: number;
@@ -127,16 +85,3 @@ export interface AttemptListItem {
     passed: boolean | null;
 }
 export interface AttemptList { items: AttemptListItem[]; page: number; size: number; total: number }
-
-// ── 멀티플레이 (WebSocket /ws/map) ──
-export type Dir = 'up' | 'down' | 'left' | 'right';
-export interface MapPlayer { user_id: number; nickname: string; level: number; x: number; y: number; dir: Dir; moving: boolean }
-export type MapClientMessage =
-    | { type: 'auth'; access_token: string }
-    | { type: 'move'; x: number; y: number; dir: Dir; moving: boolean };
-export type MapServerMessage =
-    | { type: 'snapshot'; me: { x: number; y: number; dir: Dir }; players: MapPlayer[] }
-    | { type: 'player_joined'; player: MapPlayer }
-    | { type: 'player_moved'; user_id: number; x: number; y: number; dir: Dir; moving: boolean }
-    | { type: 'player_updated'; user_id: number; level: number }
-    | { type: 'player_left'; user_id: number };

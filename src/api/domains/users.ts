@@ -2,7 +2,7 @@ import { queryOptions } from '@tanstack/react-query';
 import { http, type RequestOptions } from '../client';
 import type { Job, Me } from '../types';
 
-// 직무와 회원 (명세 3절, 4절). 담당자가 정해지면 이 파일을 맡는다.
+// 직무와 회원 (명세 3절, 4절). 배우는 쪽, 담당: 조가을
 
 export const userApi = {
     jobs: (o?: RequestOptions) => http.get<Job[]>('/jobs', o),
