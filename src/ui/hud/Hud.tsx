@@ -58,8 +58,6 @@ export function Hud({ onOpenHelp }: { onOpenHelp: () => void }) {
                 </div>
             )}
 
-            {/* 왼쪽 위: 조작 키 안내 */}
-            <KeyGuide />
         </div>
     );
 }
@@ -317,27 +315,5 @@ function ConnectionBanner({ state }: { state: 'reconnecting' | 'replaced' }) {
             <span className="mr-2 inline-block h-2.5 w-2.5 animate-[px-blink_0.8s_steps(2)_infinite] bg-sun-deep motion-reduce:animate-none align-middle" aria-hidden />
             <b>다른 사용자와 연결이 끊겨 다시 연결하는 중이에요.</b> 그동안 다른 사람의 움직임이 멈춰 보일 수 있어요.
         </Notice>
-    );
-}
-
-// ── 조작 키 안내 ──
-
-function KeyGuide() {
-    return (
-        <div className="absolute left-4 top-4 flex w-max items-center gap-5 whitespace-nowrap bg-paper/85 px-box-flat px-4 py-2 text-[13px]">
-            <span className="flex items-center gap-1.5">
-                <span className="mr-1 font-pixel font-bold">이동</span>
-                <Kbd>W</Kbd><Kbd>A</Kbd><Kbd>S</Kbd><Kbd>D</Kbd>
-                <span className="mx-1 text-ink-soft">또는</span>
-                <Kbd>↑</Kbd><Kbd>←</Kbd><Kbd>↓</Kbd><Kbd>→</Kbd>
-            </span>
-            <span className="h-4 w-[2px] bg-line" aria-hidden />
-            <span className="flex items-center gap-1.5">
-                <span className="mr-1 font-pixel font-bold">말 걸기·보기</span>
-                <Kbd>F</Kbd>
-                <span className="mx-1 text-ink-soft">또는</span>
-                <Kbd>Space</Kbd>
-            </span>
-        </div>
     );
 }
