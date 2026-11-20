@@ -31,7 +31,7 @@ src/
   App.tsx    최상위 컴포넌트
   game/      맵, 캐릭터 이동 등 Phaser 쪽 코드
   ui/        맵 위에 뜨는 화면 (React 컴포넌트)
-  api/       API 명세와 1:1인 타입과 통신 코드
+  api/       서버와 주고받는 코드 (사용법: docs/api-module.md)
   session/   로그인 상태와 내 정보
 mock/        모의 서버 (개발 서버에서만 동작)
 docs/        계획, 의도, 판단 기록, ADR
