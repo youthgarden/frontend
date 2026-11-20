@@ -1,16 +1,17 @@
 import { Scene } from 'phaser';
 import { emit, on, type Place } from '../../events';
-import { HINT_STYLE, LABEL_STYLE, S, ensureAssets, travel } from '../assets';
+import { HINT_STYLE, LABEL_STYLE, S, addMapText, ensureAssets, travel } from '../assets';
+import { MAP_HEIGHT, MAP_WIDTH, SPAWN as SPAWN_PX } from '../mapSpec';
 import { RemotePlayers } from '../net/RemotePlayers';
 import { Player } from '../player';
 import { TILE } from '../pixel-kit/index.js';
 
 // 광장. 강의실과 시험장은 닫힌 건물로만 보이고, 문 앞에서 들어가면 Room 장면으로 바뀐다.
-// 좌표는 픽셀 키트의 논리 좌표로 적고 화면에는 S배로 그린다.
-const COLS = 30;
-const ROWS = 22;
-const WIDTH = COLS * TILE;
-const HEIGHT = ROWS * TILE;
+// 좌표는 픽셀 키트의 논리 좌표로 적고 화면에는 S배로 그린다. 맵 크기와 시작 위치는 mapSpec.ts(화면 픽셀)가 기준이다.
+const WIDTH = MAP_WIDTH / S;
+const HEIGHT = MAP_HEIGHT / S;
+const COLS = WIDTH / TILE;
+const ROWS = HEIGHT / TILE;
 const T = TILE;
 
 // ── 바닥 ── 타일 칸 단위. 나중 줄이 앞 줄을 덮는다.
@@ -30,14 +31,14 @@ const OBJECTS: [key: string, x: number, y: number][] = [
     ['pine', 30, 70], ['tree', 80, 96], ['tree2', 236, 92], ['pine', 300, 74], ['tree', 340, 104], ['tree2', 620, 104],
     ['pine', 660, 76], ['tree', 720, 94], ['pine', 900, 72], ['tree2', 940, 100], ['bush', 270, 200], ['bush', 700, 206],
     // 광장
-    ['hall', 480, 7 * T], ['fountain', 480, 13.6 * T], ['plant', 418, 7 * T + 14], ['plant', 542, 7 * T + 14],
+    ['mainhall', 480, 7 * T], ['fountain', 480, 390], ['plant', 418, 7 * T + 14], ['plant', 542, 7 * T + 14],
     ['lamp', 9.4 * T, 8.6 * T], ['lamp', 20.6 * T, 8.6 * T], ['lamp', 9.4 * T, 15.6 * T], ['lamp', 20.6 * T, 15.6 * T],
-    ['bench', 11.6 * T, 13.4 * T], ['bench', 18.4 * T, 13.4 * T],
-    ['flowers', 8.2 * T, 8.4 * T], ['flowers', 21.8 * T, 8.4 * T], ['flowers', 12 * T, 16.7 * T], ['flowers', 18 * T, 16.7 * T],
-    ['sign', 7.3 * T, 8.6 * T], ['sign', 22.7 * T, 8.6 * T],
+    ['bench', 11.6 * T, 12 * T], ['bench', 18.4 * T, 12 * T],
+    ['flowers', 8.6 * T, 8.4 * T], ['flowers', 21.4 * T, 8.4 * T], ['flowers', 12 * T, 16.7 * T], ['flowers', 18 * T, 16.7 * T],
+    ['sign', 7.8 * T, 8.6 * T], ['sign', 22.2 * T, 8.6 * T],
     // 건물
-    ['classroom', 4.5 * T, 9 * T], // 강의실
-    ['library', 25.5 * T, 9 * T], // 시험장
+    ['school', 4.5 * T, 9 * T], // 강의실
+    ['examhall', 25.5 * T, 9 * T], // 시험장
     // 강가와 아래쪽
     ['bush', 1.2 * T, 16.9 * T], ['bush', 10 * T, 16.9 * T], ['bush', 20 * T, 16.9 * T], ['bush', 28.8 * T, 16.9 * T],
     ['rock', 7.6 * T, 21.6 * T], ['rock', 22.4 * T, 21.4 * T],
@@ -45,29 +46,34 @@ const OBJECTS: [key: string, x: number, y: number][] = [
 ];
 const FLAT = new Set(['flowers']); // 바닥에 깔리는 그림. 캐릭터가 위로 지나간다.
 
-// ── 지나갈 수 없는 곳 ── [x, y, 너비, 높이]. 건물 아랫부분과 분수.
+// ── 지나갈 수 없는 곳 ── [x, y, 너비, 높이]. 건물 아랫부분과 분수. 건물 그림의 맨 아래까지 막아야 캐릭터가 건물 뒤로 가려지지 않는다.
 // ponytail: 나무, 벤치 같은 작은 것은 막지 않는다. 필요해지면 여기에 추가하거나 Tiled 충돌 레이어로 바꾼다.
 const WALLS: [x: number, y: number, w: number, h: number][] = [
-    [396, 180, 168, 44], // 본관
-    [84, 244, 120, 44], // 강의실 건물
-    [752, 244, 128, 44], // 시험장 건물
-    [456, 410, 48, 26], // 분수
+    [384, 176, 192, 48], // 본관
+    [51, 240, 186, 48], // 강의실 건물
+    [733, 240, 166, 48], // 시험장 건물
+    [456, 365, 48, 26], // 분수
 ];
 
-const SPAWN: [number, number] = [480, 466]; // 분수 앞. 접속 시작 위치
+const SPAWN: [number, number] = [SPAWN_PX.x / S, SPAWN_PX.y / S]; // 분수 앞. 접속 시작 위치
 
 // ── 건물 ── 이름표 위치와 문 앞 위치. 문 앞에서 F나 스페이스를 누르면 들어간다.
-const BUILDINGS: { place: Place; label: string; labelAt: [number, number]; door: [number, number] }[] = [
-    { place: 'classroom', label: '강의실', labelAt: [4.5 * T, 9 * T - 81], door: [4.5 * T, 9 * T + 12] },
-    { place: 'exam', label: '시험장', labelAt: [25.5 * T, 9 * T - 85], door: [25.5 * T, 9 * T + 12] },
+// key는 OBJECTS에 놓인 건물 그림. 문 근처에 가면 `${key}_open`(건물 안이 보이는 그림)으로 바뀐다.
+// openDrop: 열린 그림은 지붕이 없어 윗부분이 비어 있다. 그 높이(objects.js의 wallTop)만큼 이름표를 내려 벽 바로 위에 둔다.
+const BUILDINGS: { place: Place; key: string; label: string; labelAt: [number, number]; openDrop: number; door: [number, number] }[] = [
+    { place: 'classroom', key: 'school', label: '강의실', labelAt: [4.5 * T, 9 * T - 154], openDrop: 38, door: [4.5 * T, 9 * T + 12] },
+    { place: 'exam', key: 'examhall', label: '시험장', labelAt: [25.5 * T, 9 * T - 134], openDrop: 24, door: [25.5 * T, 9 * T + 12] },
 ];
 const DOOR_REACH = 26;
+const OPEN_REACH = 90; // 문에서 이 거리 안에 들어오면 건물 안이 보인다
 
 export class World extends Scene {
     private player: Player;
     private others: RemotePlayers;
     private hint: Phaser.GameObjects.Text;
     private ground: string[][];
+    private buildingImages: Map<string, Phaser.GameObjects.Image>;
+    private buildingLabels: Map<string, Phaser.GameObjects.Text>;
 
     constructor() {
         super('World');
@@ -90,13 +96,16 @@ export class World extends Scene {
         }));
 
         // 아래에 있는 것이 앞에 오도록 y를 depth로 쓴다
+        this.buildingImages = new Map();
         for (const [key, x, y] of OBJECTS) {
-            this.add.image(x * S, y * S, `yg-obj-${key}`).setOrigin(0.5, 1).setScale(S).setDepth(FLAT.has(key) ? -1 : y * S);
+            const img = this.add.image(x * S, y * S, `yg-obj-${key}`).setOrigin(0.5, 1).setScale(S).setDepth(FLAT.has(key) ? -1 : y * S);
+            if (BUILDINGS.some((b) => b.key === key)) this.buildingImages.set(key, img);
         }
 
-        this.add.text(480 * S, (7 * T - 100) * S, '광장', LABEL_STYLE).setOrigin(0.5).setDepth(100000);
-        for (const { label, labelAt } of BUILDINGS) {
-            this.add.text(labelAt[0] * S, labelAt[1] * S, label, LABEL_STYLE).setOrigin(0.5).setDepth(100000);
+        addMapText(this, 480 * S, (7 * T - 152) * S, '광장', LABEL_STYLE).setOrigin(0.5).setDepth(100000);
+        this.buildingLabels = new Map();
+        for (const { key, label, labelAt } of BUILDINGS) {
+            this.buildingLabels.set(key, addMapText(this, labelAt[0] * S, labelAt[1] * S, label, LABEL_STYLE).setOrigin(0.5).setDepth(100000));
         }
 
         // 건물에서 나오면 문에서 조금 떨어져 시작한다. 문 앞에서 시작하면 누르고 있던 키 때문에 곧바로 다시 들어가 버린다.
@@ -108,8 +117,7 @@ export class World extends Scene {
         emit('place', 'plaza');
 
         // 화면에 고정된 안내 문구
-        this.hint = this.add
-            .text(this.scale.width / 2, this.scale.height - 90, '', HINT_STYLE)
+        this.hint = addMapText(this, this.scale.width / 2, this.scale.height - 90, '', HINT_STYLE)
             .setOrigin(0.5)
             .setScrollFactor(0)
             .setDepth(100001)
@@ -134,6 +142,17 @@ export class World extends Scene {
 
         const px = this.player.x / S;
         const py = this.player.y / S;
+        // 문 근처에 가면 건물이 열려 안이 보이고, 멀어지면 다시 닫힌다
+        for (const b of BUILDINGS) {
+            const open = Math.hypot(px - b.door[0], py - b.door[1]) < OPEN_REACH;
+            const texture = `yg-obj-${b.key}${open ? '_open' : ''}`;
+            const img = this.buildingImages.get(b.key);
+            if (img && img.texture.key !== texture) {
+                img.setTexture(texture);
+                this.buildingLabels.get(b.key)?.setY((b.labelAt[1] + (open ? b.openDrop : 0)) * S);
+            }
+        }
+
         const building = BUILDINGS.find((b) => Math.hypot(px - b.door[0], py - b.door[1]) < DOOR_REACH);
         this.hint.setVisible(!!building);
         if (!building) return;

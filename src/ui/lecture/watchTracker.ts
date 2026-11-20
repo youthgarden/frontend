@@ -70,14 +70,7 @@ export class WatchTracker {
      */
     report(position: number): Promise<void> {
         const run = async () => {
-            // 이어지는 구간은 지금까지를 떼어 보내고, 같은 자리에서 계속 이어 간다
-            if (this.segStart !== null && this.segLast > this.segStart) {
-                this.closed.push([this.segStart, this.segLast]);
-                this.segStart = this.segLast;
-            }
-            const all = normalize(this.closed, this.duration);
-            const batch = all.slice(0, MAX_RANGES_PER_REPORT);
-            this.closed = all.slice(MAX_RANGES_PER_REPORT);
+            const batch = this.takeBatch();
             const pos = Math.round(clamp(position, 0, this.duration));
             if (batch.length === 0 && pos === this.lastPosition) return;
             try {
@@ -91,6 +84,33 @@ export class WatchTracker {
         };
         this.queue = this.queue.then(run, run);
         return this.queue;
+    }
+
+    /**
+     * 보낼 구간을 차례를 기다리지 않고 지금 바로 꺼낸다. 탭이 닫힐 때처럼 앞의 보고를 기다릴 수 없을 때 쓴다.
+     * 꺼낸 구간은 쌓아 둔 데서 빠지므로 다음 보고에 다시 들어가지 않는다. 보낼 구간이 없으면 null.
+     * 보내지 못했으면 restore로 되돌린다.
+     */
+    drain(position: number): ProgressRequest | null {
+        const batch = this.takeBatch();
+        if (batch.length === 0) return null;
+        return { watched_ranges: batch, position_sec: Math.round(clamp(position, 0, this.duration)) };
+    }
+
+    /** drain으로 꺼냈지만 보내지 못한 구간을 되돌린다 */
+    restore(body: ProgressRequest) {
+        this.closed = [...body.watched_ranges, ...this.closed];
+    }
+
+    /** 이번에 보낼 구간을 떼어 낸다. 이어지는 구간은 지금까지를 떼고, 같은 자리에서 계속 이어 간다 */
+    private takeBatch(): Range[] {
+        if (this.segStart !== null && this.segLast > this.segStart) {
+            this.closed.push([this.segStart, this.segLast]);
+            this.segStart = this.segLast;
+        }
+        const all = normalize(this.closed, this.duration);
+        this.closed = all.slice(MAX_RANGES_PER_REPORT);
+        return all.slice(0, MAX_RANGES_PER_REPORT);
     }
 
     private closeSegment() {

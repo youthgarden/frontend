@@ -145,50 +145,53 @@ function headIn(x, y) {
 
 // ───────────────────────── 모자 ─────────────────────────
 
-// 반구에 가까운 돔 (y 1~10). 맨 위에는 꼭지 단추가 붙는다.
+// 컨셉 이미지의 벙거지 모자: 머리를 덮는 둥근 돔(y 0~8)에, 머리 양옆으로 퍼지며 아래로 기우는 챙.
 const DOME = [[13, 24], [11, 26], [9, 28], [8, 29], [7, 30], [6, 31], [6, 31], [5, 32], [5, 32]];
-const brimD = (x) => Math.abs(x + 0.5 - 19) / 18;
-const brimTop = (x) => 10 + Math.round(Math.pow(brimD(x), 3) * 6);
-const brimBot = (x) => 13 + Math.round(Math.pow(brimD(x), 2.2) * 7);
+const BRIM_X0 = -2;
+const BRIM_X1 = 39;
+const brimD = (x) => Math.abs(x + 0.5 - 19) / 21;
+const brimTop = (x) => 9 + Math.round(Math.pow(brimD(x), 2.2) * 4);
+const brimBot = (x) => brimTop(x) + (brimD(x) > 0.82 ? 2 : 3);
 
 function drawHat(g, s) {
   const [hi, base, mid] = s.hat.ramp;
   const dark = darken(mid, 0.18);
   // 돔
-  DOME.forEach(([x0, x1], i) => g.hline(x0, x1, 1 + i, base));
+  DOME.forEach(([x0, x1], i) => g.hline(x0, x1, i, base));
   // 오른쪽 그늘, 왼쪽 반사광
   DOME.forEach(([x0, x1], i) => {
-    const y = 1 + i;
-    if (i >= 2) g.hline(x1 - 1, x1, y, mid);
-    if (i >= 2 && i <= 7) g.set(x0 + 1, y, hi);
+    if (i >= 2) g.hline(x1 - 1, x1, i, mid);
+    if (i >= 2 && i <= 7) g.set(x0 + 1, i, hi);
   });
-  g.hline(10, 12, 3, hi);
-  g.hline(9, 10, 4, hi);
-  g.hline(8, 9, 5, hi);
-  // 세로 이음선과 꼭지
-  for (let y = 1; y <= 9; y++) {
-    const off = Math.round(4 + Math.sqrt(y) * 1.6);
+  g.hline(10, 12, 2, hi);
+  g.hline(9, 10, 3, hi);
+  g.hline(8, 9, 4, hi);
+  // 세로 이음선
+  for (let y = 0; y <= 8; y++) {
+    const off = Math.round(4 + Math.sqrt(y + 1) * 1.6);
     g.set(18 - off, y, mid);
     g.set(mx(18 - off), y, mid);
   }
   // 꼭지 단추
-  g.hline(16, 21, 0, base);
-  g.hline(17, 20, 0, hi);
-  g.hline(16, 21, 1, mid);
-  // 돔과 챙이 만나는 이음선
-  g.hline(4, 33, 10, mid);
-  // 챙: 가운데는 얇고 양옆으로 갈수록 아래로 처진다
-  for (let x = 1; x <= 36; x++) {
+  g.hline(16, 21, -1, base);
+  g.hline(17, 20, -1, hi);
+  g.hline(16, 21, 0, mid);
+  // 챙: 가운데에서 양 끝으로 갈수록 아래로 기운다
+  for (let x = BRIM_X0; x <= BRIM_X1; x++) {
     const top = brimTop(x);
     const bot = brimBot(x);
+    // 돔 아래와 챙 사이가 비지 않게 메운다
+    if (x >= 5 && x <= 32) g.vline(x, 9, top, base);
     for (let y = top; y <= bot; y++) {
       let c = base;
       if (y === bot) c = dark;
-      else if (y === bot - 1 && bot - top >= 3) c = mid;
-      else if (y === top && x >= 4 && x <= 14) c = hi;
+      else if (y === bot - 1) c = mid;
+      else if (y === top && x >= 2 && x <= 14) c = hi;
       g.set(x, y, c);
     }
   }
+  // 돔과 챙이 만나는 이음선
+  for (let x = 5; x <= 32; x++) g.set(x, brimTop(x), mid);
   if (s.hat.max) {
     g.map(27, -4, ['...w...', '...w...', '..wyw..', 'wwyyyww', '..wyw..', '...w...', '...w...'], { w: '#fffbe0', y: '#ffe14a' });
   }
@@ -272,16 +275,17 @@ function drawFace(g, s, view) {
   }
   // 옆모습 (오른쪽을 본다)
   face.eye(g, 24, 22);
-  g.rect(29, 27, 3, 2, BLUSH);
+  // 볼과 입은 머리 윤곽 안쪽에만 그린다. 윤곽 밖으로 나가면 얼굴 선이 울퉁불퉁해 보인다.
+  g.rect(28, 27, 3, 2, BLUSH);
   const y = 29;
   if (face.mouth === 'smile' || face.mouth === 'grin') {
-    g.set(29, y + 1, MOUTH); g.set(30, y + 1, MOUTH); g.set(31, y, MOUTH);
+    g.set(27, y + 1, MOUTH); g.set(28, y + 1, MOUTH); g.set(29, y, MOUTH);
   } else if (face.mouth === 'o') {
-    g.rect(30, y, 2, 2, MOUTH_DARK);
+    g.rect(28, y, 2, 2, MOUTH_DARK);
   } else {
-    g.hline(28, 31, y, MOUTH_DARK);
-    g.hline(28, 31, y + 1, MOUTH);
-    g.hline(29, 31, y + 2, TONGUE);
+    g.hline(26, 29, y, MOUTH_DARK);
+    g.hline(26, 29, y + 1, MOUTH);
+    g.hline(26, 27, y + 2, TONGUE);
   }
   if (face.brow === 'angry') [[23, 18], [24, 18], [25, 19], [26, 19], [27, 20], [28, 20]].forEach(([bx, by]) => g.set(bx, by, INK));
   if (face.brow === 'raise') g.hline(24, 28, 19, INK);
@@ -375,16 +379,20 @@ function hairSide(g, s) {
   for (let y = 11; y <= 32; y++)
     for (let x = 5 - st.puff; x <= 32; x++) {
       const outside = x < 5;
-      const back = x <= 17 && y <= st.nape && (headIn(x, y) || (outside && y >= 14 && y <= st.nape - 3));
-      const fr = x >= 18 && headIn(x, y) && y <= st.fringe[x - 5];
+      // 귀가 보이는 머리는 귀 뒤(x 13~17)에서 귀 위까지만 덮는다. 아래까지 덮으면 볼에 어두운 선이 생긴다
+      const bottom = !st.coversEars && x >= 13 ? 22 : st.nape;
+      const back = x <= 17 && y <= bottom && (headIn(x, y) || (outside && y >= 14 && y <= st.nape - 3));
+      // 앞모습의 옆머리(귀 옆으로 길게 내려오는 부분)는 옆모습에서 얼굴 앞을 덮지 않도록 눈썹 높이에서 자른다
+      const brow = Math.min(st.fringe[x - 5], 21);
+      const fr = x >= 18 && headIn(x, y) && y <= brow;
       const burn = x >= 18 && x <= 19 && y <= 24 && headIn(x, y);
       if (!(back || fr || burn)) continue;
-      const edge = (back && y >= st.nape - 1) || (fr && y === st.fringe[x - 5]);
+      const edge = (back && y >= bottom - 1) || (fr && y === brow);
       g.set(x, y, edge ? hd : hb);
     }
   g.hline(8, 11, 15, hh);
   g.hline(9, 10, 16, hh);
-  for (const x of [9, 13]) g.vline(x, 18, st.nape - 3, hd);
+  for (const x of st.coversEars ? [9, 13] : [9]) g.vline(x, 18, st.nape - 3, hd);
 }
 
 // 등 뒤로 내려오는 머리 덩어리. half가 true면 옆모습용으로 뒤쪽 절반만 그린다.
@@ -411,6 +419,27 @@ function hairMass(g, s, half) {
   }
 }
 
+// 포니테일의 줄별 폭 [안쪽, 바깥쪽]. 0이 머리에 붙는 쪽이고 y 15부터 한 줄씩 내려간다.
+const PONY_ROWS = [
+  [0, 3], [0, 4], [0, 5], [1, 6], [1, 6], [1, 6], [1, 7],
+  [2, 7], [2, 7], [2, 7], [2, 7], [2, 7], [2, 7], [2, 7], [2, 7],
+  [2, 6], [2, 6], [2, 6], [2, 6], [2, 6], [3, 6], [3, 6], [3, 6], [4, 7], [5, 7], [6, 7],
+];
+
+// 포니테일 한 가닥. at(dx)는 머리에 붙는 쪽에서 dx칸 떨어진 곳의 x좌표.
+function drawPony(g, s, at) {
+  const [hh, hb, hd] = s.hr;
+  PONY_ROWS.forEach(([a, b], i) => {
+    const y = 15 + i;
+    for (let dx = a; dx <= b; dx++) {
+      const last = i === PONY_ROWS.length - 1;
+      g.set(at(dx), y, dx === b || last ? hd : dx === a + 1 && y >= 22 && y <= 29 ? hh : hb);
+    }
+  });
+  // 머리끈. 머리 테두리에 가려지지 않게 머리에서 두 칸 떨어뜨린다
+  for (const dx of [2, 3]) g.vline(at(dx), 17, 19, '#ff6b8a');
+}
+
 function drawTails(g, s, view) {
   const st = s.st;
   if (!st.tail) return;
@@ -422,9 +451,10 @@ function drawTails(g, s, view) {
     g.vline(x0 + 2, y0 + 3, y0 + 7, hh);
   };
   if (st.tail === 'pony') {
-    if (view === 'down') { blob(31, 13, 40, 30); blob(34, 27, 41, 41); g.rect(31, 17, 2, 3, tie); }
-    if (view === 'up') { blob(13, 17, 24, 34); blob(15, 30, 22, 44); g.hline(15, 22, 18, tie); }
-    if (view === 'right') { blob(-3, 14, 6, 31); blob(-3, 28, 3, 41); g.rect(5, 18, 2, 3, tie); }
+    // 캐릭터의 왼쪽으로 묶은 머리. 앞모습에서는 화면 오른쪽, 뒷모습에서는 화면 왼쪽에 온다.
+    // 옆모습은 drawCharacter가 따로 그린다: 왼쪽을 볼 때는 전부 보이고, 오른쪽을 볼 때는 머리 뒤에 가려져 끝만 보인다.
+    if (view === 'down') drawPony(g, s, (dx) => 33 + dx);
+    if (view === 'up') drawPony(g, s, (dx) => 4 - dx);
   } else {
     if (view === 'down' || view === 'up') {
       blob(-3, 19, 5, 38);
@@ -591,7 +621,9 @@ export function drawCharacter(spec, dir = 'down', frame = 0) {
   // 1. 몸 뒤로 가는 머리카락
   if (view === 'down') layer(main, u, (g) => { hairMass(g, s, false); drawTails(g, s, view); });
   if (view === 'right') layer(main, u, (g) => { hairMass(g, s, true); drawTails(g, s, view); });
-  if (view === 'up' && s.st.tail === 'twin') layer(main, u, (g) => drawTails(g, s, view));
+  // 오른쪽을 볼 때 포니테일은 반대편에 있다. 머리 뒤에 그려 두면 머리에 가려지고 목 뒤로 끝부분만 보인다.
+  if (dir === 'right' && s.st.tail === 'pony') layer(main, u, (g) => drawPony(g, s, (dx) => 12 - dx));
+  if (view === 'up') layer(main, u, (g) => drawTails(g, s, view));
 
   // 2. 다리
   layer(main, 0, (g) => drawLegs(g, s, m, view));
@@ -621,8 +653,6 @@ export function drawCharacter(spec, dir = 'down', frame = 0) {
       drawEars(g, s, view);
       hairBack(g, s);
     } else {
-      g.set(33, 25, s.sk[1]);
-      g.set(33, 26, s.sk[1]);
       hairSide(g, s);
       drawEars(g, s, view);
       drawFace(g, s, view);
@@ -630,7 +660,9 @@ export function drawCharacter(spec, dir = 'down', frame = 0) {
       drawPin(g, s, view);
     }
   }, s.hr);
-  if (view === 'up') layer(main, u, (g) => { hairMass(g, s, false); if (s.st.tail === 'pony') drawTails(g, s, view); }, s.hr);
+  // 왼쪽을 볼 때는 묶은 쪽이 보는 사람을 향한다. 귀 뒤에서 어깨 앞으로 내려오게 머리 위에 그린다.
+  if (dir === 'left' && s.st.tail === 'pony') layer(main, u, (g) => drawPony(g, s, (dx) => 12 - dx), s.hr);
+  if (view === 'up') layer(main, u, (g) => hairMass(g, s, false), s.hr);
 
   // 5. 모자
   layer(main, u, (g) => drawHat(g, s));

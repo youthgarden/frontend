@@ -29,7 +29,8 @@ export interface LectureSummary {
     completed: boolean;
 }
 export interface LectureDashboard { completed_count: number; total_count: number; lectures: LectureSummary[] }
-export interface LectureDetail extends LectureSummary { youtube_video_id: string; last_position_sec: number }
+/** task_id: 이 강의와 연결된 과제. 없으면 null */
+export interface LectureDetail extends LectureSummary { youtube_video_id: string; last_position_sec: number; task_id: number | null }
 export interface ProgressRequest { watched_ranges: [number, number][]; position_sec: number }
 export interface ProgressResponse { progress_rate: number; completed: boolean; just_completed: boolean }
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { errorMessage } from '../../api';
+import { API_BASE, errorMessage, getAccessToken } from '../../api';
 import { api } from '../../api';
-import type { LectureDetail, ProgressResponse } from '../../api';
+import type { LectureDetail, ProgressRequest, ProgressResponse } from '../../api';
 import { characterSpec } from '../../character';
 import { useSession } from '../../session/SessionProvider';
 import { KitArt } from '../hud/KitArt';
@@ -20,6 +20,23 @@ const SAMPLE_MS = 500;
 const REPORT_MS = 10_000;
 
 const isActive = (s: PlayerState) => s === 'playing' || s === 'buffering';
+
+/**
+ * 페이지가 사라지는 중에도 끝까지 나가는 보고 (keepalive). 탭 닫기, 새로고침, 로그아웃에 쓴다.
+ * 공용 클라이언트는 keepalive를 모르고, sendBeacon은 Authorization 헤더를 못 붙여서 fetch를 직접 부른다.
+ * 토큰 재발급은 하지 않는다. 사라지는 페이지에서는 기다릴 수 없다.
+ */
+async function sendProgressKeepalive(id: number, body: ProgressRequest, token: string | null): Promise<ProgressResponse> {
+    const res = await fetch(`${API_BASE}/lectures/${id}/progress`, {
+        method: 'POST',
+        keepalive: true,
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    return (await res.json()) as ProgressResponse;
+}
 
 export function LecturePlayerView({ lectureId, flushRef, onBack, onGuideToExam }: {
     lectureId: number;
@@ -112,7 +129,7 @@ export function LecturePlayerView({ lectureId, flushRef, onBack, onGuideToExam }
                             {linkedText && <> 이제 {linkedText} 시험을 볼 수 있어요.</>}
                         </p>
                     </div>
-                    {linked.length > 0 && (
+                    {detail.task_id !== null && (
                         <Button variant="primary" onClick={onGuideToExam}>시험장으로 이동</Button>
                     )}
                 </div>
@@ -134,6 +151,12 @@ export function LecturePlayerView({ lectureId, flushRef, onBack, onGuideToExam }
                 <p className="mt-2 text-[14px] leading-snug text-ink-soft">
                     실제로 본 부분만 수강률에 들어가요. 80% 이상 보면 수강 완료예요. 건너뛴 부분은 들어가지 않고, 보는 동안 10초마다 저장돼요.
                 </p>
+                {/* 명세 5절: 다시 보거나 새로고침한 뒤에도 completed이고 연결 과제가 있으면 이동 버튼을 보여 준다 */}
+                {completed && !justCompleted && detail.task_id !== null && (
+                    <div className="mt-2">
+                        <Button size="sm" variant="primary" onClick={onGuideToExam}>시험장으로 이동</Button>
+                    </div>
+                )}
                 {!completed && linkedText && (
                     <p className="mt-1 text-[14px] leading-snug text-ink-soft">이 강의를 다 들으면 {linkedText} 시험을 볼 수 있어요.</p>
                 )}
@@ -211,17 +234,34 @@ function VideoStage({ detail, flushRef, onResult, calm }: {
         }
 
         // 재생 중에는 0.5초마다 위치를 재고, 10초마다 보고한다
+        // 로그아웃하면 토큰이 먼저 지워진 뒤에 이 화면이 사라진다. 마지막 보고에 쓸 토큰을 기억해 둔다
+        let token = getAccessToken();
         const sampler = window.setInterval(() => {
+            token = getAccessToken() ?? token;
             if (current && isActive(current.getState())) tracker.sample(current.getTime());
         }, SAMPLE_MS);
         const reporter = window.setInterval(() => {
             if (current && isActive(current.getState())) void tracker.report(current.getTime());
         }, REPORT_MS);
-        // 다른 탭으로 가거나 창을 내리면 그동안 본 것을 먼저 보고해 둔다
+        // 기다릴 수 없을 때(탭 닫기, 새로고침, 화면이 사라짐)의 보고. 앞의 보고를 기다리지 않고 keepalive로 바로 보낸다.
+        // 꺼낸 구간은 tracker에서 빠지므로 두 번 보내지 않는다. 실패하면 되돌려 다음 보고에 싣는다
+        const flushNow = () => {
+            if (!current) return;
+            const t = current.getTime();
+            if (isActive(current.getState())) tracker.sample(t);
+            const body = tracker.drain(t);
+            if (!body) return;
+            sendProgressKeepalive(detail.id, body, getAccessToken() ?? token).then(
+                (res) => onResultRef.current(res),
+                () => tracker.restore(body),
+            );
+        };
+        // 다른 탭으로 가거나 창을 내리면 그동안 본 것을 먼저 보고해 둔다. 모바일에서는 이것이 마지막 기회다
         const onHide = () => {
-            if (document.visibilityState === 'hidden' && current) void tracker.report(current.getTime());
+            if (document.visibilityState === 'hidden') flushNow();
         };
         document.addEventListener('visibilitychange', onHide);
+        window.addEventListener('pagehide', flushNow);
 
         const flush = async () => {
             if (!current) return;
@@ -238,12 +278,13 @@ function VideoStage({ detail, flushRef, onResult, calm }: {
             window.clearInterval(sampler);
             window.clearInterval(reporter);
             document.removeEventListener('visibilitychange', onHide);
+            window.removeEventListener('pagehide', flushNow);
             if (flushRef.current === flush) flushRef.current = null;
             if (current) {
-                // 마지막 보고 없이 사라지는 경우(로그아웃 등)에도 본 구간을 잃지 않게 보내 둔다
-                const t = current.getTime();
-                tracker.stop(t);
-                if (tracker.hasUnsent()) void tracker.report(t);
+                // 마지막 보고 없이 사라지는 경우(로그아웃 등)에도 본 구간을 잃지 않게 보내 둔다.
+                // 이때는 토큰이 이미 지워졌을 수 있어서 공용 클라이언트가 아니라 기억해 둔 토큰으로 보낸다
+                tracker.stop(current.getTime());
+                flushNow();
                 current.destroy();
             }
             host?.remove();

@@ -87,13 +87,15 @@ export function forceExpire(token: string, store: Store) {
 }
 
 // ── 리프레시 토큰 ──
-export function issueRefresh(userId: number, store: Store) {
+/** familyId: 재발급이면 기존 토큰의 것을 넘긴다. 로그인이면 새로 만든다 */
+export function issueRefresh(userId: number, store: Store, familyId = crypto.randomBytes(32).toString('hex')) {
     const raw = crypto.randomBytes(32).toString('base64url');
     const now = Date.now();
     store.data.refresh_tokens.push({
         id: store.nextId('refresh'),
         user_id: userId,
         token_hash: sha256(raw),
+        family_id: familyId,
         expires_at: now + REFRESH_TTL_SEC * 1000,
         revoked_at: null,
         created_at: now,
@@ -111,6 +113,19 @@ export function findRefresh(raw: string | undefined, store: Store) {
     const row = store.data.refresh_tokens.find((r) => r.token_hash === hash);
     if (!row || row.revoked_at !== null || row.expires_at <= Date.now()) return undefined;
     return row;
+}
+
+/** 로그아웃: 쿠키의 토큰이 속한 로그인 세션의 활성 토큰을 모두 폐기한다. 쿠키의 토큰이 방금 회전되어 이미 폐기됐어도 같은 세션의 새 토큰까지 폐기한다 */
+export function revokeFamily(raw: string | undefined, store: Store) {
+    if (!raw) return;
+    const hash = sha256(raw);
+    const row = store.data.refresh_tokens.find((r) => r.token_hash === hash);
+    if (!row) return;
+    const now = Date.now();
+    for (const r of store.data.refresh_tokens) {
+        if (r.revoked_at === null && (r === row || (row.family_id !== undefined && r.family_id === row.family_id))) r.revoked_at = now;
+    }
+    store.touch();
 }
 
 export function refreshCookie(raw: string) {

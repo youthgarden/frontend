@@ -1,7 +1,7 @@
 import { Geom, Scene } from 'phaser';
 import { EXAMINER_SPEC } from '../../character';
 import { emit, on, type GameEvents, type Place } from '../../events';
-import { HINT_STYLE, LABEL_STYLE, S, ensureAssets, travel } from '../assets';
+import { HINT_STYLE, LABEL_STYLE, S, addMapText, ensureAssets, travel } from '../assets';
 import { CharacterView } from '../character/CharacterView';
 import { Player } from '../player';
 import { TILE } from '../pixel-kit/index.js';
@@ -15,6 +15,7 @@ const sy = (y: number) => y * S + OY;
 const FLOOR = { x: 104, y: 56, cols: 16, rows: 10 }; // 바닥 타일 영역
 const FLOOR_W = FLOOR.cols * TILE;
 const FLOOR_H = FLOOR.rows * TILE;
+const WALL_H = 46; // 뒷벽 높이. 창문, 게시판, 현수막을 걸 수 있는 높이
 const WALK = { left: 120, right: 600, top: 88, bottom: 372 }; // 캐릭터 발이 다닐 수 있는 범위
 const DOOR: [number, number] = [360, 368]; // 아래쪽 벽 가운데의 출구 앞
 const DOOR_REACH = 24;
@@ -25,27 +26,43 @@ type RoomPlace = Exclude<Place, 'plaza'>;
 type Thing = [key: string, x: number, y: number, solid?: boolean]; // (x, y)는 그림의 아래쪽 가운데. solid면 지나갈 수 없다
 type Spot = { at: [number, number]; reach: number; hint: string; target: GameEvents['interact'][0] };
 
-const desks = (rows: number[]): Thing[] => rows.flatMap((y) => DESK_X.flatMap((x): Thing[] => [['desk', x, y, true], ['chair', x, y + 16]]));
+const desks = (rows: number[], desk = 'desk'): Thing[] => rows.flatMap((y) => DESK_X.flatMap((x): Thing[] => [[desk, x, y, true], ['chair', x, y + 16]]));
+// 의자마다 하나씩 있는 상호작용 지점. 의자 위에 서면 닿는다.
+const seats = (rows: number[], hint: string, target: Spot['target']): Spot[] =>
+    rows.flatMap((y) => DESK_X.map((x): Spot => ({ at: [x, y + 10], reach: 14, hint, target })));
+const FLAT = new Set(['carpet']); // 바닥에 깔리는 그림. 캐릭터가 위로 지나간다.
 
-const ROOMS: Record<RoomPlace, { label: string; tile: string; things: Thing[]; spot: Spot }> = {
+// wall: 뒷벽 색 [벽면, 걸레받이]
+const ROOMS: Record<RoomPlace, { label: string; tile: string; wall: [number, number]; things: Thing[]; spots: Spot[] }> = {
     classroom: {
         label: '강의실',
         tile: 'floor',
+        wall: [0xf3e6cc, 0xd8c39c],
         things: [
-            ['chalkboard', 360, 62], ['bookshelf', 150, 64], ['bookshelf', 570, 64], ['plant', 124, 372], ['plant', 596, 372],
+            // 뒷벽: 칠판 양옆으로 게시판과 창문, 시계
+            ['chalkboard', 360, 60], ['noticeboard', 268, 52], ['window', 196, 52], ['window', 468, 52], ['clock', 524, 40],
+            ['bookshelf', 132, 64], ['bookshelf', 588, 64], ['plant', 124, 372], ['plant', 596, 372],
+            ['lectern', 290, 100, true], // 교탁. 칠판 앞 자리는 비워 둔다
             ...desks([170, 246, 322]),
         ],
-        spot: { at: [360, 96], reach: 40, hint: '강의 보기', target: 'lectures' }, // 칠판 앞
+        // 칠판 앞이나 아무 자리에서 강의를 본다
+        spots: [{ at: [360, 96], reach: 40, hint: '강의 보기', target: 'lectures' }, ...seats([170, 246, 322], '자리에서 강의 보기', 'lectures')],
     },
     exam: {
         label: '시험장',
         tile: 'wood',
+        wall: [0x4a3b7a, 0x392c62],
         things: [
-            ['computer', 360, 112, true], // 접수 책상
-            ['bookshelf', 150, 64], ['trophy', 190, 64], ['plant', 570, 66], ['plant', 124, 372], ['plant', 596, 372],
-            ...desks([220, 310]),
+            // 뒷벽: 현수막과 시계. 양 끝에 기둥
+            ['banner', 240, 54], ['banner', 480, 54], ['clock', 540, 38], ['bookshelf', 170, 64], ['trophy', 206, 64],
+            ['pillar', 124, 76, true], ['pillar', 596, 76, true], ['plant', 124, 372], ['plant', 596, 372],
+            ['reception', 360, 112, true], // 접수대
+            // 접수대 앞에서 출구까지 이어지는 융단
+            ...[176, 208, 240, 272, 304, 336, 368].map((y): Thing => ['carpet', 360, y]),
+            ...desks([220, 310], 'examdesk'),
         ],
-        spot: { at: [360, 132], reach: 40, hint: '시험 보기', target: 'exam' }, // 접수 책상 앞
+        // 접수대 앞이나 아무 자리에서 시험을 본다
+        spots: [{ at: [360, 132], reach: 40, hint: '시험 보기', target: 'exam' }, ...seats([220, 310], '자리에서 시험 보기', 'exam')],
     },
 };
 
@@ -66,9 +83,9 @@ export class Room extends Scene {
         this.cameras.main.setBackgroundColor('#3a3546');
 
         // 벽
-        this.add.rectangle(sx(FLOOR.x - 6), sy(FLOOR.y - 38), (FLOOR_W + 12) * S, (FLOOR_H + 50) * S, 0x5a4a3c).setOrigin(0);
-        this.add.rectangle(sx(FLOOR.x), sy(FLOOR.y - 32), FLOOR_W * S, 32 * S, 0xf3e6cc).setOrigin(0);
-        this.add.rectangle(sx(FLOOR.x), sy(FLOOR.y - 6), FLOOR_W * S, 6 * S, 0xd8c39c).setOrigin(0);
+        this.add.rectangle(sx(FLOOR.x - 6), sy(FLOOR.y - WALL_H - 6), (FLOOR_W + 12) * S, (FLOOR_H + WALL_H + 18) * S, 0x5a4a3c).setOrigin(0);
+        this.add.rectangle(sx(FLOOR.x), sy(FLOOR.y - WALL_H), FLOOR_W * S, WALL_H * S, room.wall[0]).setOrigin(0);
+        this.add.rectangle(sx(FLOOR.x), sy(FLOOR.y - 6), FLOOR_W * S, 6 * S, room.wall[1]).setOrigin(0);
         // 바닥
         for (let j = 0; j < FLOOR.rows; j++) {
             for (let i = 0; i < FLOOR.cols; i++) {
@@ -77,29 +94,29 @@ export class Room extends Scene {
         }
         // 출구
         this.add.rectangle(sx(DOOR[0] - 20), sy(FLOOR.y + FLOOR_H), 40 * S, 12 * S, 0x8a5a2b).setOrigin(0);
-        this.add.text(sx(DOOR[0]), sy(FLOOR.y + FLOOR_H + 26), '출구', LABEL_STYLE).setOrigin(0.5);
+        addMapText(this, sx(DOOR[0]), sy(FLOOR.y + FLOOR_H + 26), '출구', LABEL_STYLE).setOrigin(0.5);
 
         // 놓인 것들. 아래에 있는 것이 앞에 오도록 y를 depth로 쓴다.
         this.solids = [];
         for (const [key, x, y, solid] of room.things) {
-            const img = this.add.image(sx(x), sy(y), `yg-obj-${key}`).setOrigin(0.5, 1).setScale(S).setDepth(sy(y));
+            const img = this.add.image(sx(x), sy(y), `yg-obj-${key}`).setOrigin(0.5, 1).setScale(S).setDepth(FLAT.has(key) ? 1 : sy(y));
             // 막는 범위는 그림의 아래쪽 절반 정도: 위쪽은 캐릭터가 뒤로 지나갈 수 있다
             if (solid) this.solids.push(new Geom.Rectangle(sx(x) - img.displayWidth / 2, sy(y) - 22 * S, img.displayWidth, 22 * S));
         }
 
-        this.add.text(sx(FLOOR.x), sy(FLOOR.y - 56), room.label, LABEL_STYLE).setOrigin(0, 0.5);
+        // 방 위쪽 가운데. 왼쪽 위는 HUD의 조작 키 안내가, 오른쪽 위는 HUD 버튼이 덮는다
+        addMapText(this, sx(FLOOR.x + FLOOR_W / 2), sy(FLOOR.y - WALL_H - 14), room.label, LABEL_STYLE).setOrigin(0.5);
 
         // 시험장 접수 책상 옆의 AI 시험관. 장식이라 막지 않는다. 책상 바로 뒤에 세우면 말을 걸러 온 캐릭터에 가려진다.
         if (this.place === 'exam') {
-            new CharacterView(this, { key: 'yg-npc-examiner', spec: EXAMINER_SPEC, name: 'AI 시험관', level: null, badge: 'AI', x: sx(312), y: sy(104), scale: S });
+            new CharacterView(this, { key: 'yg-npc-examiner', spec: EXAMINER_SPEC, name: 'AI 시험관', level: null, badge: 'AI', x: sx(296), y: sy(104), scale: S });
         }
 
         // 문에서 조금 떨어져 시작한다. 문 앞에서 시작하면 누르고 있던 키 때문에 곧바로 다시 나가 버린다.
         this.player = new Player(this, sx(DOOR[0]), sy(DOOR[1] - 44), (x, y) => this.canWalk(x, y));
         emit('place', this.place);
 
-        this.hint = this.add
-            .text(this.scale.width / 2, this.scale.height - 20, '', HINT_STYLE)
+        this.hint = addMapText(this, this.scale.width / 2, this.scale.height - 20, '', HINT_STYLE)
             .setOrigin(0.5)
             .setDepth(100001)
             .setVisible(false);
@@ -119,15 +136,15 @@ export class Room extends Scene {
         const room = ROOMS[this.place];
         const near = (at: [number, number], reach: number) => Math.hypot(this.player.x - sx(at[0]), this.player.y - sy(at[1])) < reach * S;
         const atDoor = near(DOOR, DOOR_REACH);
-        const atSpot = near(room.spot.at, room.spot.reach);
+        const atSpot = room.spots.find((s) => near(s.at, s.reach));
 
-        this.hint.setVisible(atDoor || atSpot);
+        this.hint.setVisible(atDoor || !!atSpot);
         if (atDoor) {
             this.hint.setText('F 또는 Space: 광장으로 나가기');
             if (this.player.pressedInteract()) travel(this, 'plaza', this.place);
         } else if (atSpot) {
-            this.hint.setText(`F 또는 Space: ${room.spot.hint}`);
-            if (this.player.pressedInteract()) emit('interact', room.spot.target);
+            this.hint.setText(`F 또는 Space: ${atSpot.hint}`);
+            if (this.player.pressedInteract()) emit('interact', atSpot.target);
         }
     }
 
