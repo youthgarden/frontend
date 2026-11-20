@@ -92,6 +92,22 @@ describe('WatchTracker', () => {
         expect(sent[1].watched_ranges).toHaveLength(5);
     });
 
+    it('drain으로 바로 꺼낸 구간은 다음 보고에 다시 들어가지 않고, restore하면 다시 들어간다', async () => {
+        const { tracker, sent } = setup();
+        let wall = play(tracker, 0, 10);
+        const body = tracker.drain(10);
+        expect(body).toEqual({ watched_ranges: [[0, 10]], position_sec: 10 });
+        expect(tracker.drain(10)).toBeNull();
+
+        wall = play(tracker, 10, 5, wall);
+        await tracker.report(15);
+        expect(sent[0].watched_ranges).toEqual([[10, 15]]);
+
+        tracker.restore(body!);
+        await tracker.report(16);
+        expect(sent[1].watched_ranges).toEqual([[0, 10]]);
+    });
+
     it('새로 본 구간도 없고 위치도 그대로면 보내지 않는다', async () => {
         const { tracker, send } = setup();
         play(tracker, 0, 5);
