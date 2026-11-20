@@ -30,14 +30,14 @@ const OBJECTS: [key: string, x: number, y: number][] = [
     ['pine', 30, 70], ['tree', 80, 96], ['tree2', 236, 92], ['pine', 300, 74], ['tree', 340, 104], ['tree2', 620, 104],
     ['pine', 660, 76], ['tree', 720, 94], ['pine', 900, 72], ['tree2', 940, 100], ['bush', 270, 200], ['bush', 700, 206],
     // 광장
-    ['hall', 480, 7 * T], ['fountain', 480, 13.6 * T], ['plant', 418, 7 * T + 14], ['plant', 542, 7 * T + 14],
+    ['mainhall', 480, 7 * T], ['fountain', 480, 13.6 * T], ['plant', 418, 7 * T + 14], ['plant', 542, 7 * T + 14],
     ['lamp', 9.4 * T, 8.6 * T], ['lamp', 20.6 * T, 8.6 * T], ['lamp', 9.4 * T, 15.6 * T], ['lamp', 20.6 * T, 15.6 * T],
     ['bench', 11.6 * T, 13.4 * T], ['bench', 18.4 * T, 13.4 * T],
-    ['flowers', 8.2 * T, 8.4 * T], ['flowers', 21.8 * T, 8.4 * T], ['flowers', 12 * T, 16.7 * T], ['flowers', 18 * T, 16.7 * T],
-    ['sign', 7.3 * T, 8.6 * T], ['sign', 22.7 * T, 8.6 * T],
+    ['flowers', 8.6 * T, 8.4 * T], ['flowers', 21.4 * T, 8.4 * T], ['flowers', 12 * T, 16.7 * T], ['flowers', 18 * T, 16.7 * T],
+    ['sign', 7.8 * T, 8.6 * T], ['sign', 22.2 * T, 8.6 * T],
     // 건물
-    ['classroom', 4.5 * T, 9 * T], // 강의실
-    ['library', 25.5 * T, 9 * T], // 시험장
+    ['school', 4.5 * T, 9 * T], // 강의실
+    ['examhall', 25.5 * T, 9 * T], // 시험장
     // 강가와 아래쪽
     ['bush', 1.2 * T, 16.9 * T], ['bush', 10 * T, 16.9 * T], ['bush', 20 * T, 16.9 * T], ['bush', 28.8 * T, 16.9 * T],
     ['rock', 7.6 * T, 21.6 * T], ['rock', 22.4 * T, 21.4 * T],
@@ -45,12 +45,12 @@ const OBJECTS: [key: string, x: number, y: number][] = [
 ];
 const FLAT = new Set(['flowers']); // 바닥에 깔리는 그림. 캐릭터가 위로 지나간다.
 
-// ── 지나갈 수 없는 곳 ── [x, y, 너비, 높이]. 건물 아랫부분과 분수.
+// ── 지나갈 수 없는 곳 ── [x, y, 너비, 높이]. 건물 아랫부분과 분수. 건물 그림의 맨 아래까지 막아야 캐릭터가 건물 뒤로 가려지지 않는다.
 // ponytail: 나무, 벤치 같은 작은 것은 막지 않는다. 필요해지면 여기에 추가하거나 Tiled 충돌 레이어로 바꾼다.
 const WALLS: [x: number, y: number, w: number, h: number][] = [
-    [396, 180, 168, 44], // 본관
-    [84, 244, 120, 44], // 강의실 건물
-    [752, 244, 128, 44], // 시험장 건물
+    [384, 176, 192, 48], // 본관
+    [51, 240, 186, 48], // 강의실 건물
+    [733, 240, 166, 48], // 시험장 건물
     [456, 410, 48, 26], // 분수
 ];
 
@@ -58,8 +58,8 @@ const SPAWN: [number, number] = [480, 466]; // 분수 앞. 접속 시작 위치
 
 // ── 건물 ── 이름표 위치와 문 앞 위치. 문 앞에서 F나 스페이스를 누르면 들어간다.
 const BUILDINGS: { place: Place; label: string; labelAt: [number, number]; door: [number, number] }[] = [
-    { place: 'classroom', label: '강의실', labelAt: [4.5 * T, 9 * T - 81], door: [4.5 * T, 9 * T + 12] },
-    { place: 'exam', label: '시험장', labelAt: [25.5 * T, 9 * T - 85], door: [25.5 * T, 9 * T + 12] },
+    { place: 'classroom', label: '강의실', labelAt: [4.5 * T, 9 * T - 154], door: [4.5 * T, 9 * T + 12] },
+    { place: 'exam', label: '시험장', labelAt: [25.5 * T, 9 * T - 134], door: [25.5 * T, 9 * T + 12] },
 ];
 const DOOR_REACH = 26;
 
@@ -94,7 +94,7 @@ export class World extends Scene {
             this.add.image(x * S, y * S, `yg-obj-${key}`).setOrigin(0.5, 1).setScale(S).setDepth(FLAT.has(key) ? -1 : y * S);
         }
 
-        this.add.text(480 * S, (7 * T - 100) * S, '광장', LABEL_STYLE).setOrigin(0.5).setDepth(100000);
+        this.add.text(480 * S, (7 * T - 152) * S, '광장', LABEL_STYLE).setOrigin(0.5).setDepth(100000);
         for (const { label, labelAt } of BUILDINGS) {
             this.add.text(labelAt[0] * S, labelAt[1] * S, label, LABEL_STYLE).setOrigin(0.5).setDepth(100000);
         }
