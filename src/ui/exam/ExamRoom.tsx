@@ -40,6 +40,8 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
     const answerRef = useRef(answer);
     const [pane, setPane] = useState<Pane>('task');
     const [chatUnread, setChatUnread] = useState(false);
+    // 새 AI 답변의 수. 좁은 화면에서 대화 영역이 숨어 있어도 화면 낭독기가 도착을 알리게 한다
+    const [replyCount, setReplyCount] = useState(0);
     const [expired, setExpired] = useState(false);
     const [modal, setModal] = useState<Modal>(null);
     const [modalBusy, setModalBusy] = useState(false);
@@ -248,7 +250,10 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
                             onPaste={(length) => record('PASTE', { length })}
                             onTimeOver={() => onTimeOverRef.current()}
                             onGone={(code) => onGoneRef.current(code)}
-                            onReply={() => setChatUnread((u) => u || pane !== 'chat')}
+                            onReply={() => {
+                                setChatUnread((u) => u || pane !== 'chat');
+                                setReplyCount((n) => n + 1);
+                            }}
                         />
                     </section>
                     <section id={`${idBase}-panel-answer`} aria-label="답안" className={paneClass('answer')}>
@@ -262,6 +267,12 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
                     </section>
                 </div>
             </div>
+
+            {/* 대화 영역은 좁은 화면에서 다른 탭을 보는 동안 숨겨져(display:none) 낭독되지 않는다.
+                늘 붙어 있는 이 영역에 새 문장을 끼워 넣어 답변 도착을 알린다 (key가 바뀌면 같은 문장도 다시 읽는다) */}
+            <p className="sr-only" aria-live="polite">
+                {replyCount > 0 && <span key={replyCount}>AI 답변이 도착했어요</span>}
+            </p>
 
             {modal === 'leave' && (
                 <ConfirmDialog
@@ -305,6 +316,7 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
                     title="답안을 제출할까요?"
                     confirmLabel="제출하기"
                     cancelLabel="계속 풀기"
+                    focusCancel
                     onConfirm={() => void submit(false)}
                     onCancel={() => setModal(null)}
                 >

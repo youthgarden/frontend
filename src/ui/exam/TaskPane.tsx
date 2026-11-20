@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { AttemptTask } from '../../api';
 import { Markdown } from './Markdown';
 import { TabBar } from './parts';
@@ -13,6 +13,18 @@ export function TaskPane({ task }: { task: AttemptTask }) {
         ...task.materials.map((m) => ({ key: `m${m.id}`, label: m.title })),
     ];
     const material = task.materials.find((m) => `m${m.id}` === tab);
+
+    // 본문의 자료 이름 버튼은 패널이 새로 그려지며 사라진다. 바꾼 뒤 그 자료의 탭에 초점을 둔다
+    const focusTab = useRef(false);
+    useEffect(() => {
+        if (!focusTab.current) return;
+        focusTab.current = false;
+        document.getElementById(`${idBase}-tab-${tab}`)?.focus();
+    }, [tab, idBase]);
+    const openMaterial = (key: string) => {
+        focusTab.current = true;
+        setTab(key);
+    };
 
     return (
         <>
@@ -52,7 +64,7 @@ export function TaskPane({ task }: { task: AttemptTask }) {
                                         <li key={m.id}>
                                             <button
                                                 type="button"
-                                                onClick={() => setTab(`m${m.id}`)}
+                                                onClick={() => openMaterial(`m${m.id}`)}
                                                 className="text-uniform underline underline-offset-2 hover:text-ink"
                                             >
                                                 {m.title}

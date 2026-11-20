@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { errorMessage, useAttemptMessages, useAttemptResult, useRegradeAttempt } from '../../api';
 import type { AttemptResult, ScoreItem } from '../../api';
 import { levelInfo } from '../../character';
@@ -121,7 +121,8 @@ export function AttemptOutcome({ attemptId, pendingLevelUp, onFirstLevelUp, onBa
             >
                 <div className="space-y-4">
                     <ExaminerSay>
-                        미안해요, 이번에는 채점을 끝내지 못했어요. 제출한 답안과 대화는 그대로 남아 있어요.
+                        {/* 채점 중 → 실패로 바뀌는 순간을 화면 낭독기가 바로 알리게 한다 */}
+                        <span role="alert">미안해요, 이번에는 채점을 끝내지 못했어요. 제출한 답안과 대화는 그대로 남아 있어요.</span>
                     </ExaminerSay>
                     <p className="text-[15px] leading-7">
                         <strong>다시 채점하기</strong>를 누르면 같은 답안으로 다시 채점해요. 다시 풀 필요는 없어요.
@@ -176,6 +177,19 @@ function ResultView({ data, levelUpNow, onBack, onClose, onOpenLecture, onRetry 
     const showEvidence = (id: number) => {
         setReview('chat');
         setHighlight(id);
+    };
+
+    // 펼치기·접기 버튼이 탭 줄로 바뀌며 사라지므로, 다시 그린 뒤 초점을 옮길 곳을 기억해 둔다
+    const focusAfter = useRef<'tab' | 'toggle' | null>(null);
+    useEffect(() => {
+        const target = focusAfter.current;
+        focusAfter.current = null;
+        if (target === 'tab' && review !== null) document.getElementById(`review-${data.id}-tab-${review}`)?.focus();
+        if (target === 'toggle' && review === null) document.getElementById(`review-${data.id}-open`)?.focus();
+    }, [review, data.id]);
+    const openReview = (key: 'chat' | 'answer') => {
+        focusAfter.current = 'tab';
+        setReview(key);
     };
 
     const primaryOnLecture = !passed && !!lecture;
@@ -284,10 +298,10 @@ function ResultView({ data, levelUpNow, onBack, onClose, onOpenLecture, onRetry 
                         <h3 id={`review-${data.id}`} className="font-pixel text-[15px] font-bold">다시 보기</h3>
                         {review === null ? (
                             <>
-                                <Button size="sm" onClick={() => setReview('chat')}>
+                                <Button size="sm" id={`review-${data.id}-open`} onClick={() => openReview('chat')}>
                                     대화 기록 보기{messages ? ` (${messages.length})` : ''}
                                 </Button>
-                                <Button size="sm" onClick={() => setReview('answer')}>제출한 답안 보기</Button>
+                                <Button size="sm" onClick={() => openReview('answer')}>제출한 답안 보기</Button>
                             </>
                         ) : (
                             <>
@@ -301,7 +315,7 @@ function ResultView({ data, levelUpNow, onBack, onClose, onOpenLecture, onRetry 
                                         { key: 'answer', label: '제출한 답안' },
                                     ]}
                                 />
-                                <Button size="sm" variant="quiet" onClick={() => { setReview(null); setHighlight(null); }}>접기</Button>
+                                <Button size="sm" variant="quiet" onClick={() => { focusAfter.current = 'toggle'; setReview(null); setHighlight(null); }}>접기</Button>
                             </>
                         )}
                     </div>
@@ -355,10 +369,13 @@ function ScoreCard({ item, weakest, onEvidence }: { item: ScoreItem; weakest: bo
             </div>
             <ProgressBar value={ratio} tone={ratio >= 0.8 ? 'ok' : 'sun'} label={`${item.name} ${item.score}점, ${item.max_score}점 만점`} className="mt-2.5" />
             <p className="mt-3 text-[15px] leading-7">{item.feedback}</p>
-            <p className="mt-1.5 text-[13px] leading-5 text-ink-faint">{CRITERION_LOOKS_AT[item.criterion]}</p>
+            <p className="mt-1.5 text-[13px] leading-5 text-ink-soft">{CRITERION_LOOKS_AT[item.criterion]}</p>
             {onEvidence && (
                 <div className="mt-3">
-                    <Button size="sm" variant="quiet" onClick={onEvidence} className="-ml-3">근거가 된 대화 보기 &gt;</Button>
+                    {/* 항목마다 같은 문구라서 낭독용 이름에 항목 이름을 붙여 구별한다. 보이는 문구로 시작해 음성 조작으로도 부를 수 있게 한다 */}
+                    <Button size="sm" variant="quiet" onClick={onEvidence} className="-ml-3" aria-label={`근거가 된 대화 보기: ${item.name}`}>
+                        근거가 된 대화 보기 &gt;
+                    </Button>
                 </div>
             )}
         </li>

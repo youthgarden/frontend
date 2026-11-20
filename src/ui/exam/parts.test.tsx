@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { AttemptStatusChip } from './parts';
+import { AttemptStatusChip, ExaminerSay } from './parts';
 
 // events.ts가 Phaser를 불러오는데, Phaser는 불러오는 순간 window를 찾는다. 이 테스트는 맵과 상관없으므로 막는다
 vi.mock('../../events', () => ({ emit: () => {}, on: () => () => {}, current: () => undefined }));
@@ -37,5 +37,15 @@ describe('AttemptStatusChip', () => {
         const ng = renderToStaticMarkup(<AttemptStatusChip status="GRADED" score={72} passed={false} />);
         expect(ok).toContain('text-ok');
         expect(ng).not.toContain('text-ok');
+    });
+});
+
+describe('ExaminerSay', () => {
+    // 이름표가 "AI 시험관"을 읽으므로 그림까지 같은 이름을 가지면 화면 낭독기가 두 번 읽는다
+    it('시험관 그림은 꾸밈으로 숨기고, "AI 시험관"은 이름표에서 한 번만 나온다', () => {
+        const out = renderToStaticMarkup(<ExaminerSay>안녕하세요</ExaminerSay>);
+        expect(out).toMatch(/<canvas[^>]*aria-hidden="true"/);
+        expect(out).not.toContain('role="img"');
+        expect(out.match(/AI 시험관/g)).toHaveLength(1);
     });
 });

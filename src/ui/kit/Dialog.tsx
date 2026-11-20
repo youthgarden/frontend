@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { emit } from '../../events';
 import { Button } from './Button';
 
@@ -39,15 +39,27 @@ const WIDTH = { sm: 'w-[420px]', md: 'w-[560px]', lg: 'w-[760px]', xl: 'w-[980px
 // 맵 위에 뜨는 창. 맵이 뒤로 비쳐 보여 "맵 안에서 연 창"이라는 맥락이 유지된다.
 export function Dialog({ title, description, onClose, dismissible = true, size = 'md', footer, children }: Props) {
     const titleId = useId();
+    const descId = useId();
     const box = useRef<HTMLDivElement>(null);
     useMapLock();
 
+    // 창을 열기 직전에 초점이 있던 요소. effect에서 읽으면 이미 창 안 버튼의 autoFocus가 처리된 뒤라서
+    // 처음 그릴 때(렌더 중에) 한 번만 읽어 둔다
+    const [previous] = useState(() => (typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null)));
+
     useEffect(() => {
-        const previous = document.activeElement as HTMLElement | null;
+        const node = box.current;
         // 창이 열리면 초점을 창 안으로 옮긴다. 안에 autoFocus가 있으면 그대로 둔다
-        if (!box.current?.contains(document.activeElement)) box.current?.focus();
-        return () => previous?.focus?.();
-    }, []);
+        if (node && !node.contains(document.activeElement)) node.focus();
+        return () => {
+            // StrictMode가 effect를 한 번 걷었다 다시 붙일 때는 창이 문서에 그대로 있다. 그때는 초점을 옮기지 않는다
+            if (!node || node.isConnected) return;
+            // 초점이 이미 다른 곳(새로 뜬 창 등)에 가 있으면 빼앗지 않는다. 창과 함께 사라져 body로 떨어졌을 때만 돌려준다
+            const active = document.activeElement;
+            if (active && active !== document.body) return;
+            if (previous?.isConnected) previous.focus();
+        };
+    }, [previous]);
 
     useEffect(() => {
         const self = box.current;
@@ -64,9 +76,20 @@ export function Dialog({ title, description, onClose, dismissible = true, size =
                 const items = box.current.querySelectorAll<HTMLElement>(
                     'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
                 );
-                if (items.length === 0) return;
+                // 초점을 받을 요소가 없으면 ("제출하고 있어요" 같은 창) 창 상자에 머문다
+                if (items.length === 0) {
+                    e.preventDefault();
+                    box.current.focus();
+                    return;
+                }
                 const first = items[0];
                 const last = items[items.length - 1];
+                // 초점이 창 밖에 있었으면 창 안으로 끌어온다
+                if (!box.current.contains(document.activeElement)) {
+                    e.preventDefault();
+                    (e.shiftKey ? last : first).focus();
+                    return;
+                }
                 if (e.shiftKey && (document.activeElement === first || document.activeElement === box.current)) {
                     e.preventDefault();
                     last.focus();
@@ -92,13 +115,14 @@ export function Dialog({ title, description, onClose, dismissible = true, size =
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
+                aria-describedby={description ? descId : undefined}
                 tabIndex={-1}
                 className={`px-box flex max-h-[calc(100vh-64px)] max-w-full animate-[px-pop_0.16s_steps(3)] flex-col bg-paper outline-none ${WIDTH[size]}`}
             >
                 <header className="flex shrink-0 items-start justify-between gap-4 border-b-[3px] border-ink bg-sun px-5 py-3">
                     <div className="min-w-0">
                         <h2 id={titleId} className="font-pixel text-[19px] font-bold leading-tight">{title}</h2>
-                        {description && <p className="mt-1 text-[14px] leading-snug text-ink/80">{description}</p>}
+                        {description && <p id={descId} className="mt-1 text-[14px] leading-snug text-ink/80">{description}</p>}
                     </div>
                     {dismissible && (
                         <Button size="sm" onClick={onClose} keyHint="Esc" className="shrink-0">닫기</Button>
