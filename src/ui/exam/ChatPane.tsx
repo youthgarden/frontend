@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
-import { errorMessage } from '../../api';
-import { api } from '../../api';
+import { errorMessage, useSendMessage } from '../../api';
 import type { ChatMessage } from '../../api';
 import { Button, Kbd, Notice } from '../kit';
 import { Markdown } from './Markdown';
@@ -26,6 +25,8 @@ export function ChatPane({ attemptId, initialMessages, locked, onPaste, onTimeOv
     const hintId = useId();
     const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
     const [draft, setDraft] = useState('');
+    const ask = useSendMessage(attemptId);
+    // 보내고 답을 기다리는 질문. 답과 같은 순간에 바뀌어야 해서 요청 상태에서 꺼내지 않고 따로 둔다
     const [pending, setPending] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const sendingRef = useRef(false);
@@ -49,7 +50,7 @@ export function ChatPane({ attemptId, initialMessages, locked, onPaste, onTimeOv
         setDraft('');
         setError(null);
         try {
-            const res = await api.sendMessage(attemptId, content);
+            const res = await ask.mutateAsync(content);
             setMessages((m) => [...m, res.user_message, res.assistant_message]);
             onReply();
         } catch (e) {

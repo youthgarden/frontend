@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { errorMessage } from '../../api';
-import { api } from '../../api';
-import type { AttemptResult, ChatMessage, ScoreItem } from '../../api';
+import { useEffect, useState } from 'react';
+import { errorMessage, useAttemptMessages, useAttemptResult, useRegradeAttempt } from '../../api';
+import type { AttemptResult, ScoreItem } from '../../api';
 import { levelInfo } from '../../character';
 import { Button, Chip, Dialog, LevelBadge, Loading, Notice, ProgressBar } from '../kit';
 import { ChatBubble } from './ChatPane';
@@ -9,8 +8,6 @@ import { ExaminerSay, TabBar } from './parts';
 import { CRITERION_LOOKS_AT, DEFAULT_PASS_SCORE, formatDateTime, isCode, type TaskRef } from './util';
 
 // 제출한 응시의 채점 대기 → 결과. 지난 결과 보기에서도 같은 컴포넌트를 쓴다.
-
-const POLL_MS = 2000;
 
 export interface PendingLevelUp {
     attemptId: number;
@@ -29,62 +26,35 @@ export function AttemptOutcome({ attemptId, pendingLevelUp, onFirstLevelUp, onBa
     onOpenLecture: (lectureId: number) => void;
     onRetry: (task: TaskRef) => void;
 }) {
-    const [data, setData] = useState<AttemptResult | null>(null);
-    const [error, setError] = useState<{ message: string; fatal: boolean } | null>(null);
-    const [pollKey, setPollKey] = useState(0);
+    // 채점 중이면 2초마다 다시 묻고, 끝나면 멈춘다. 화면이 사라지면 멈춘다.
+    // first_view는 처음 조회한 응답에만 true로 온다. 저장소의 값은 나중 응답으로 덮이므로 받는 순간 위에 알려 기억하게 한다
+    const query = useAttemptResult(attemptId, (r) => {
+        if (r.status === 'GRADED' && r.level_up?.leveled_up) onFirstLevelUp({ attemptId: r.id, level: r.level_up.level });
+    });
+    const data = query.data ?? null;
+    // 이 창을 연 뒤의 실패만 보여 준다 (저장소에 지난번 실패가 남아 있을 수 있다)
+    const failed = query.isFetchedAfterMount ? query.error : null;
+    const error = failed
+        ? isCode(failed, 'ATTEMPT_NOT_FOUND')
+            ? { message: '이 시험 기록을 찾지 못했어요.', fatal: true }
+            : { message: errorMessage(failed), fatal: false }
+        : null;
+    const regradeAttempt = useRegradeAttempt();
     const [regrading, setRegrading] = useState(false);
     const [regradeError, setRegradeError] = useState<string | null>(null);
-    const levelUpRef = useRef(onFirstLevelUp);
-    levelUpRef.current = onFirstLevelUp;
-
-    // 2초마다 상태를 확인한다. GRADING이 아니게 되면 멈춘다. 화면이 사라지면 반드시 멈춘다
-    useEffect(() => {
-        let cancelled = false;
-        let timer: number | undefined;
-        let failures = 0;
-        const load = async () => {
-            try {
-                const r = await api.attempt(attemptId);
-                // first_view는 처음 조회한 응답에만 true로 온다. StrictMode에서 버려진 응답이어도 놓치지 않는다
-                if (r.status === 'GRADED' && r.first_view && r.level_up?.leveled_up) {
-                    levelUpRef.current({ attemptId: r.id, level: r.level_up.level });
-                }
-                if (cancelled) return;
-                failures = 0;
-                setError(null);
-                setData(r);
-                if (r.status === 'GRADING') timer = window.setTimeout(load, POLL_MS);
-            } catch (e) {
-                if (cancelled) return;
-                if (isCode(e, 'ATTEMPT_NOT_FOUND')) {
-                    setError({ message: '이 시험 기록을 찾지 못했어요.', fatal: true });
-                    return;
-                }
-                failures += 1;
-                setError({ message: errorMessage(e), fatal: false });
-                // 잠깐 끊긴 것일 수 있으니 간격을 늘려 가며 계속 확인한다
-                timer = window.setTimeout(load, POLL_MS * Math.min(failures + 1, 5));
-            }
-        };
-        void load();
-        return () => {
-            cancelled = true;
-            if (timer !== undefined) window.clearTimeout(timer);
-        };
-    }, [attemptId, pollKey]);
 
     const regrade = async () => {
         if (regrading) return;
         setRegrading(true);
         setRegradeError(null);
         try {
-            await api.regrade(attemptId);
-            setData((d) => (d ? { ...d, status: 'GRADING' } : d));
+            // 성공하면 보고 있는 결과가 "채점 중"으로 바뀌고 다시 묻기 시작한다
+            await regradeAttempt.mutateAsync(attemptId);
         } catch (e) {
+            // 이미 다시 채점에 들어갔다: 새로 물어 지금 상태를 보여 준다 (낡음 표시가 다시 부른다)
             if (!isCode(e, 'ATTEMPT_NOT_REGRADABLE')) setRegradeError(`다시 채점하지 못했어요. ${errorMessage(e)}`);
         } finally {
             setRegrading(false);
-            setPollKey((k) => k + 1);
         }
     };
 
@@ -94,7 +64,7 @@ export function AttemptOutcome({ attemptId, pendingLevelUp, onFirstLevelUp, onBa
         return (
             <Dialog title="시험 결과" size="md" onClose={onClose} footer={backButton}>
                 {error ? (
-                    <Notice tone="danger" action={!error.fatal && <Button size="sm" onClick={() => setPollKey((k) => k + 1)}>다시 시도</Button>}>
+                    <Notice tone="danger" action={!error.fatal && <Button size="sm" onClick={() => void query.refetch()}>다시 시도</Button>}>
                         결과를 불러오지 못했어요. {error.message}
                     </Notice>
                 ) : (
@@ -190,21 +160,9 @@ function ResultView({ data, levelUpNow, onBack, onClose, onOpenLecture, onRetry 
 
     const [review, setReview] = useState<'chat' | 'answer' | null>(null);
     const [highlight, setHighlight] = useState<number | null>(null);
-    const [messages, setMessages] = useState<ChatMessage[] | null>(null);
-    const [msgError, setMsgError] = useState<string | null>(null);
-    const [msgTries, setMsgTries] = useState(0);
-
-    useEffect(() => {
-        let cancelled = false;
-        setMsgError(null);
-        api.messages(data.id).then(
-            (m) => !cancelled && setMessages(m),
-            (e) => !cancelled && setMsgError(errorMessage(e)),
-        );
-        return () => {
-            cancelled = true;
-        };
-    }, [data.id, msgTries]);
+    const messageQuery = useAttemptMessages(data.id);
+    const messages = messageQuery.data ?? null;
+    const msgError = !messages && messageQuery.error && !messageQuery.isFetching ? errorMessage(messageQuery.error) : null;
 
     // 근거가 된 대화로 이동한다
     useEffect(() => {
@@ -359,7 +317,7 @@ function ResultView({ data, levelUpNow, onBack, onClose, onOpenLecture, onRetry 
                                     ? <p className="max-w-[72ch] whitespace-pre-wrap break-words text-[15px] leading-7">{data.answer}</p>
                                     : <p className="text-ink-soft">제출한 답안이 비어 있어요.</p>
                             ) : msgError ? (
-                                <Notice tone="danger" action={<Button size="sm" onClick={() => setMsgTries((n) => n + 1)}>다시 시도</Button>}>
+                                <Notice tone="danger" action={<Button size="sm" onClick={() => void messageQuery.refetch()}>다시 시도</Button>}>
                                     대화 기록을 불러오지 못했어요. {msgError}
                                 </Notice>
                             ) : !messages ? (

@@ -1,6 +1,6 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { errorMessage } from '../../api';
-import { api } from '../../api';
+import { attemptQueries, errorMessage, useCurrentAttempt, useGiveUpAttempt } from '../../api';
 import type { AttemptInProgress, AttemptPendingResult, ChatMessage } from '../../api';
 import { useSession } from '../../session/SessionProvider';
 import { Button, Dialog, Loading, Notice } from '../kit';
@@ -10,41 +10,31 @@ import { formatClock, formatDuration, isCode } from './util';
 
 // 시험관에게 말을 걸었을 때 처음 보이는 창들: 확인 중, 풀던 시험, 안 본 결과, 시험관 메뉴.
 
-/** GET /attempts/current로 어디로 갈지 정한다 */
+/** GET /attempts/current로 어디로 갈지 정한다. 결과는 저장해 두지 않아 말을 걸 때마다 새로 묻는다 */
 export function EntryCheck({ onResume, onUnseen, onMenu, onClose }: {
     onResume: (live: LiveAttempt) => void;
     onUnseen: (pending: AttemptPendingResult) => void;
     onMenu: () => void;
     onClose: () => void;
 }) {
-    const [error, setError] = useState<string | null>(null);
-    const [tries, setTries] = useState(0);
+    const query = useCurrentAttempt();
+    // 이 창을 연 뒤에 받은 응답으로만 길을 정한다
+    const answered = query.isFetchedAfterMount && !query.isFetching ? query.data : undefined;
+    const error = query.error && !query.isFetching ? errorMessage(query.error) : null;
 
     useEffect(() => {
-        // 조회라서 StrictMode에서 두 번 불려도 괜찮다. 늦게 온 쪽은 버린다
-        let cancelled = false;
-        setError(null);
-        api.currentAttempt().then(
-            (cur) => {
-                if (cancelled) return;
-                if (cur === null) onMenu();
-                else if (cur.status === 'IN_PROGRESS') onResume({ attempt: cur as AttemptInProgress, receivedAt: performance.now() });
-                else onUnseen(cur as AttemptPendingResult);
-            },
-            (e) => {
-                if (!cancelled) setError(errorMessage(e));
-            },
-        );
-        return () => {
-            cancelled = true;
-        };
+        if (!answered) return;
+        const { current: cur, receivedAt } = answered;
+        if (cur === null) onMenu();
+        else if (cur.status === 'IN_PROGRESS') onResume({ attempt: cur as AttemptInProgress, receivedAt });
+        else onUnseen(cur as AttemptPendingResult);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tries]);
+    }, [answered]);
 
     return (
         <Dialog title="AI 시험관" onClose={onClose} size="md">
             {error ? (
-                <Notice tone="danger" action={<Button size="sm" onClick={() => setTries((n) => n + 1)}>다시 시도</Button>}>
+                <Notice tone="danger" action={<Button size="sm" onClick={() => void query.refetch()}>다시 시도</Button>}>
                     시험관과 이야기를 시작하지 못했어요. {error}
                 </Notice>
             ) : (
@@ -63,6 +53,8 @@ export function ResumePrompt({ live, onContinue, onGaveUp, onClose }: {
 }) {
     const { attempt } = live;
     const left = useSecondsLeft(live);
+    const queryClient = useQueryClient();
+    const giveUpAttempt = useGiveUpAttempt();
     const [step, setStep] = useState<'ask' | 'confirmGiveUp'>('ask');
     const [busy, setBusy] = useState<'continue' | 'giveUp' | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -72,7 +64,8 @@ export function ResumePrompt({ live, onContinue, onGaveUp, onClose }: {
         setBusy('continue');
         setError(null);
         try {
-            const messages = await api.messages(attempt.id);
+            // 이어 풀기를 누른 때의 대화 기록이 필요하다. 저장해 둔 값을 쓰지 않는다
+            const messages = await queryClient.fetchQuery({ ...attemptQueries.messages(attempt.id), staleTime: 0 });
             onContinue(live, messages);
         } catch (e) {
             setError(`대화 기록을 불러오지 못했어요. ${errorMessage(e)}`);
@@ -85,7 +78,7 @@ export function ResumePrompt({ live, onContinue, onGaveUp, onClose }: {
         setBusy('giveUp');
         setError(null);
         try {
-            await api.giveUp(attempt.id);
+            await giveUpAttempt.mutateAsync(attempt.id);
             onGaveUp();
         } catch (e) {
             // 그사이 시간이 끝나 서버가 제출했으면 포기할 수 없다. 처음부터 다시 확인하게 한다

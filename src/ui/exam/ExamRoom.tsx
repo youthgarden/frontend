@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { errorMessage } from '../../api';
-import { api } from '../../api';
+import { api, errorMessage, useGiveUpAttempt, useSubmitAttempt } from '../../api';
 import type { AttemptEventType, ChatMessage } from '../../api';
 import { Button, Dialog, Loading, Notice, useMapLock } from '../kit';
 import { AnswerPane } from './AnswerPane';
@@ -49,6 +48,8 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
     const [phase, setPhase] = useState<Phase>({ kind: 'working' });
     // 제출·포기 요청은 한 번만 나가게 막는다 (제출 클릭과 시간 종료가 겹쳐도)
     const finishingRef = useRef(false);
+    const { mutateAsync: submitAttempt } = useSubmitAttempt();
+    const { mutateAsync: giveUpAttempt } = useGiveUpAttempt();
 
     // 아래 콜백들은 서로를 부르므로 ref로 이어 둔다
     const onTimeOverRef = useRef<() => void>(() => {});
@@ -69,7 +70,7 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
         setModal(null);
         setPhase({ kind: 'submitting', auto });
         try {
-            await api.submit(attemptId, answerRef.current);
+            await submitAttempt({ id: attemptId, answer: answerRef.current });
             onSubmitted(attemptId);
         } catch (e) {
             // 이미 제출됨: 타이머 자동 제출과 겹쳤거나, 마감 + 1분이 지나 서버가 제출했다
@@ -84,7 +85,7 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
             finishingRef.current = false;
             setPhase({ kind: 'submitFailed', auto, message: errorMessage(e) });
         }
-    }, [attemptId, onSubmitted, saver]);
+    }, [attemptId, onSubmitted, saver, submitAttempt]);
 
     onTimeOverRef.current = () => {
         setExpired(true);
@@ -167,7 +168,7 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
         setModalBusy(true);
         setModalError(null);
         try {
-            await api.giveUp(attemptId);
+            await giveUpAttempt(attemptId);
             onGaveUp();
         } catch (e) {
             if (isCode(e, 'ATTEMPT_NOT_IN_PROGRESS')) {

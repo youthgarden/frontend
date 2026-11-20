@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { errorMessage } from '../../api';
-import { api } from '../../api';
-import type { TaskDetail } from '../../api';
+import { errorMessage, useStartAttempt, useTask } from '../../api';
 import { Button, Dialog, Loading, Notice } from '../kit';
 import { ExaminerSay } from './parts';
 import type { LiveAttempt } from './useCountdown';
@@ -17,42 +15,32 @@ export function TaskBrief({ task, onStarted, onLocked, onAlreadyInProgress, onBa
     onBackToList: () => void;
     onClose: () => void;
 }) {
-    const [detail, setDetail] = useState<TaskDetail | null>(null);
-    const [loadError, setLoadError] = useState<string | null>(null);
-    const [tries, setTries] = useState(0);
-    const [starting, setStarting] = useState(false);
+    const query = useTask(task.id);
+    const detail = query.data ?? null;
+    // 지난번 실패가 저장소에 남아 있을 수 있다. 다시 묻는 중에는 판단하지 않는다 (그사이 강의를 들었을 수 있다)
+    const failed = query.isFetching ? null : query.error;
+    const locked = isCode(failed, 'LECTURE_NOT_COMPLETED');
+    const loadError = failed && !locked ? errorMessage(failed) : null;
+    const startAttempt = useStartAttempt();
+    // 성공한 뒤 화면이 넘어갈 때까지도 시작 중으로 보인다
+    const starting = startAttempt.isPending || startAttempt.isSuccess;
     const [startError, setStartError] = useState<string | null>(null);
     // 두 번 눌러도 시작 요청은 한 번만 나간다
     const startingRef = useRef(false);
 
     useEffect(() => {
-        let cancelled = false;
-        setLoadError(null);
-        api.task(task.id).then(
-            (d) => !cancelled && setDetail(d),
-            (e) => {
-                if (cancelled) return;
-                if (isCode(e, 'LECTURE_NOT_COMPLETED')) onLocked();
-                else setLoadError(errorMessage(e));
-            },
-        );
-        return () => {
-            cancelled = true;
-        };
+        if (locked) onLocked();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [task.id, tries]);
+    }, [locked]);
 
     const start = async () => {
         if (startingRef.current) return;
         startingRef.current = true;
-        setStarting(true);
         setStartError(null);
         try {
-            const attempt = await api.startAttempt(task.id);
-            onStarted({ attempt, receivedAt: performance.now() });
+            onStarted(await startAttempt.mutateAsync(task.id));
         } catch (e) {
             startingRef.current = false;
-            setStarting(false);
             if (isCode(e, 'LECTURE_NOT_COMPLETED')) onLocked();
             else if (isCode(e, 'ATTEMPT_ALREADY_IN_PROGRESS')) onAlreadyInProgress();
             else setStartError(`시험을 시작하지 못했어요. ${errorMessage(e)}`);
@@ -75,7 +63,7 @@ export function TaskBrief({ task, onStarted, onLocked, onAlreadyInProgress, onBa
             }
         >
             {loadError && (
-                <Notice tone="danger" action={<Button size="sm" onClick={() => setTries((n) => n + 1)}>다시 시도</Button>}>
+                <Notice tone="danger" action={<Button size="sm" onClick={() => void query.refetch()}>다시 시도</Button>}>
                     과제 안내를 불러오지 못했어요. {loadError}
                 </Notice>
             )}
