@@ -104,7 +104,8 @@ export class Room extends Scene {
             if (solid) this.solids.push(new Geom.Rectangle(sx(x) - img.displayWidth / 2, sy(y) - 22 * S, img.displayWidth, 22 * S));
         }
 
-        addMapText(this, sx(FLOOR.x), sy(FLOOR.y - WALL_H - 14), room.label, LABEL_STYLE).setOrigin(0, 0.5);
+        // 방 위쪽 가운데. 왼쪽 위는 HUD의 조작 키 안내가, 오른쪽 위는 HUD 버튼이 덮는다
+        addMapText(this, sx(FLOOR.x + FLOOR_W / 2), sy(FLOOR.y - WALL_H - 14), room.label, LABEL_STYLE).setOrigin(0.5);
 
         // 시험장 접수 책상 옆의 AI 시험관. 장식이라 막지 않는다. 책상 바로 뒤에 세우면 말을 걸러 온 캐릭터에 가려진다.
         if (this.place === 'exam') {
