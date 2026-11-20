@@ -43,6 +43,9 @@ function MapScreen() {
     const { reloadMe, reloadProgress } = useSession();
     const [overlay, setOverlay] = useState<Overlay>(null);
     const [helpOpen, setHelpOpen] = useState(false);
+    // 첫 입장 안내를 이번 접속에서 닫았는지. "봤다"는 저장이 실패해도 안내는 닫혀야 한다.
+    // 닫히지 않으면 안내 창이 버튼을 받지 않는 채로 남고 맵도 잠긴다. 저장에 실패했으면 다음 접속 때 한 번 더 뜬다.
+    const [tutorialDismissed, setTutorialDismissed] = useState(false);
     // 시험 결과로 오른 레벨. 시험 창이 닫힌 뒤 맵에서 연출한다
     const [pendingLevel, setPendingLevel] = useState<number | null>(null);
 
@@ -62,7 +65,7 @@ function MapScreen() {
         void reloadMe();
     }, [pendingLevel, reloadMe]);
 
-    const showTutorial = !me.tutorial_seen || helpOpen;
+    const showTutorial = (!me.tutorial_seen && !tutorialDismissed) || helpOpen;
 
     return (
         <>
@@ -90,6 +93,7 @@ function MapScreen() {
                 <Tutorial
                     onDone={() => {
                         setHelpOpen(false);
+                        setTutorialDismissed(true);
                         if (!me.tutorial_seen) void reloadMe();
                     }}
                 />
