@@ -11,6 +11,14 @@ function done(g) {
   return g.outline(OUTLINE);
 }
 
+// 그림이 Grid 가장자리까지 닿으면 outline이 그 바깥에 선을 그릴 자리가 없어 테두리가 끊긴다.
+// 사방에 한 칸씩 여유를 두고 옮겨 그린 뒤 테두리를 두른다.
+function doneFramed(g) {
+  const framed = new Grid(g.w + 2, g.h + 2);
+  framed.blit(g, 1, 1);
+  return framed.outline(OUTLINE);
+}
+
 function treeRound(seed = 1) {
   const g = new Grid(36, 46);
   const r = rng(seed * 977);
@@ -543,7 +551,7 @@ function school() {
   g.rect(cx + 1, 1, 11, 7, '#ffcf2e');
   g.hline(cx + 1, cx + 11, 7, '#e39b12');
   g.rect(cx + 4, 3, 3, 2, '#ffffff');
-  return done(g);
+  return doneFramed(g);
 }
 
 // 시험장: 기둥 네 개와 삼각 지붕이 있는 큰 홀. 별 문양과 현수막으로 격식을 준다.
@@ -641,7 +649,7 @@ function examHall() {
   g.vline(cx + 13, 110, 121, gold);
   g.hline(cx - 13, cx + 12, 113, '#a8342a');
   g.hline(cx - 13, cx + 12, 117, '#a8342a');
-  return done(g);
+  return doneFramed(g);
 }
 
 // 광장 본관: 가운데가 앞으로 나온 큰 건물. 삼각 지붕에 시계, 기둥이 받치는 현관, 양쪽 날개에 둥근 창문.
@@ -731,7 +739,7 @@ function mainHall() {
   g.rect(cx + 1, 1, 11, 7, '#ffcf2e');
   g.hline(cx + 1, cx + 11, 7, '#e39b12');
   g.rect(cx + 4, 3, 3, 2, '#ffffff');
-  return done(g);
+  return doneFramed(g);
 }
 
 export const OBJECTS = {
