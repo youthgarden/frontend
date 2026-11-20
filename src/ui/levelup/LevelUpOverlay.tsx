@@ -33,6 +33,7 @@ export function LevelUpOverlay({ level, onDone }: { level: number; onDone: () =>
     const me = useMe();
     useMapLock();
     const titleId = useId();
+    const confirmId = useId();
     const reduced = useMemo(prefersReducedMotion, []);
 
     const next = levelInfo(level);
@@ -59,6 +60,12 @@ export function LevelUpOverlay({ level, onDone }: { level: number; onDone: () =>
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             // 시험 창에서 누르고 있던 키가 반복 입력되어 연출을 보기도 전에 닫히지 않게 한다
+            // 이 연출 안에서 초점을 받는 것은 확인 버튼 하나다. Tab이 연출 밖(검수용 조작판 등)으로 나가지 않게 붙잡아 둔다
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                document.getElementById(confirmId)?.focus();
+                return;
+            }
             if (e.repeat) return;
             if (e.key === 'Enter' || e.key === 'Escape') {
                 e.preventDefault();
@@ -67,7 +74,7 @@ export function LevelUpOverlay({ level, onDone }: { level: number; onDone: () =>
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, []);
+    }, [confirmId]);
 
     const after = phase === 'after';
     const shown = after ? next : prev;
@@ -157,7 +164,7 @@ export function LevelUpOverlay({ level, onDone }: { level: number; onDone: () =>
                     <HatHeads current={after ? next.level : prev.level} userId={me.id} scale={1} />
                 </div>
 
-                <Button variant="primary" size="lg" keyHint="Enter" autoFocus className="mt-8" onClick={finish}>
+                <Button id={confirmId} variant="primary" size="lg" keyHint="Enter" autoFocus className="mt-8" onClick={finish}>
                     확인
                 </Button>
             </div>

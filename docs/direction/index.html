@@ -75,8 +75,8 @@ svg text { font-family: var(--pixel); }
     <p class="lede">픽셀 키트를 화면과 캐릭터에 입히고, 백엔드가 준비되기 전에도 한 바퀴가 돌도록 모의 서버를 붙였습니다. PoC(방향을 확인하려고 작게 만든 시제품)로 방향을 확인받은 뒤, 팀원이 만든 실제 맵 위로 옮겨 완성했습니다. 이 문서는 만들어진 것과 남은 일을 한곳에 정리한 것입니다.</p>
     <ul class="status">
       <li><b>가입부터 레벨업까지</b>실제 맵에서 한 바퀴가 동작</li>
-      <li><b>통과 93 · 실패 0</b>모의 서버 흐름 확인 스크립트</li>
-      <li><b>통과 17 · 실패 0</b>단위 테스트</li>
+      <li><b>통과 120 · 실패 0</b>모의 서버 흐름 확인 스크립트</li>
+      <li><b>통과 228 · 실패 0</b>단위 테스트</li>
       <li><b>빌드 통과</b>타입 오류 0건</li>
     </ul>
     <nav>
@@ -147,12 +147,12 @@ svg text { font-family: var(--pixel); }
       <figcaption><span class="step">9</span><b>시험관에게 말 걸기.</b> 풀던 시험이 있으면 이 화면 대신 "이어 풀기 / 포기하기"가, 나가 있는 동안 자동 제출된 시험이 있으면 "결과 보기"가 먼저 나옵니다.</figcaption>
     </figure>
     <figure>
-      <img src="shots/10-task-list.png" alt="과제 목록. 첫 과제만 고를 수 있고 나머지는 강의를 먼저 들어야 한다는 안내와 강의 들으러 가기 버튼이 있다">
-      <figcaption><span class="step">10</span><b>과제 목록.</b> 막힌 과제는 이유와 함께 그 강의로 바로 가는 버튼을 줍니다. 막다른 길을 만들지 않습니다.</figcaption>
+      <img src="shots/10-task-list.png" alt="과제 목록. 통과한 과제, 아직 통과하지 못한 과제, 잠긴 과제가 꼬리표와 최고 총점과 함께 나열돼 있고, 잠긴 과제에는 강의실로 이동 버튼이 있다">
+      <figcaption><span class="step">10</span><b>과제 목록.</b> 통과 여부는 총점이 아니라 두 영역의 기준으로 정해지므로 꼬리표와 최고 총점을 따로 보여 줍니다. 잠긴 과제는 필수 강의와 "강의실로 이동" 버튼을 줍니다. 막다른 길을 만들지 않습니다.</figcaption>
     </figure>
     <figure class="wide">
-      <img src="shots/11-task-brief.png" alt="과제 안내 창. 상황, 해야 할 일, 제공 자료, 시작 전에 알아 둘 것, 평가 항목 네 개가 있다">
-      <figcaption><span class="step">11</span><b>과제 안내.</b> 시작하면 시간이 바로 흐르고, 나가도 흐르고, 대화와 답안 수정이 기록돼 평가에 쓰인다는 것을 시작 전에 알립니다.</figcaption>
+      <img src="shots/11-task-brief.png" alt="과제 안내 창의 평가 부분. 두 영역을 모두 충족해야 통과라는 통과 기준, 이 과제에서 꼭 지켜야 할 것, 영역별 항목과 배점이 있다">
+      <figcaption><span class="step">11</span><b>과제 안내.</b> 시작 전에 통과 기준을 알립니다. 총점이 높아도 한 영역이 기준에 못 미치면 통과가 아니라는 것, 답변 검증에 최소 점수가 있다는 것, 이 과제에서 꼭 지켜야 할 것입니다. 숫자는 모두 서버의 값입니다. 시간이 바로 흐르고 대화와 답안 수정이 기록된다는 것도 이 창에서 알립니다.</figcaption>
     </figure>
     <figure class="wide">
       <img src="shots/12-exam.png" alt="시험 화면. 화면 전체를 쓰며 왼쪽에 과제와 자료, 가운데에 AI 대화, 오른쪽에 답안이 있고 위쪽에 남은 시간과 제출하기 버튼이 있다">
@@ -163,12 +163,12 @@ svg text { font-family: var(--pixel); }
       <figcaption><span class="step">13</span><b>시간이 얼마 남지 않았을 때.</b> 5분과 1분에서 타이머의 색과 문구가 함께 바뀝니다. 0이 되면 지금 답안으로 자동 제출합니다. 잠시 나갔다 와도 답안과 대화가 그대로 돌아옵니다.</figcaption>
     </figure>
     <figure>
-      <img src="shots/14-result.png" alt="시험 결과 창. 통과 점수, 시험관의 총평, 레벨이 올랐다는 예고, 항목별 점수 네 개와 피드백">
-      <figcaption><span class="step">14</span><b>통과한 결과.</b> 총점과 통과 기준선, 시험관의 총평, 네 항목의 점수와 피드백. 맵으로 돌아가면 모자가 바뀐다고 예고합니다.</figcaption>
+      <img src="shots/14-result.png" alt="통과한 시험 결과 창. 통과 표시, 시험관의 총평, 레벨이 올랐다는 예고, 두 영역의 점수와 충족 여부">
+      <figcaption><span class="step">14</span><b>통과한 결과.</b> 통과 여부를 가장 먼저 보여 주고, 두 영역의 점수와 충족 여부, 꼭 지켜야 할 것의 판정, 항목별 피드백이 이어집니다. 맵으로 돌아가면 모자가 바뀐다고 예고합니다.</figcaption>
     </figure>
     <figure>
-      <img src="shots/15-result-fail.png" alt="미달한 시험 결과 창. 65점 미달, 통과까지 15점 남았다는 문장, 가장 보완할 항목 표시">
-      <figcaption><span class="step">15</span><b>미달한 결과.</b> 통과까지 몇 점 남았는지, 어느 항목을 가장 보완해야 하는지, 근거가 된 대화가 어느 장면인지, 다시 볼 강의가 무엇인지로 이어집니다.</figcaption>
+      <img src="shots/15-result-fail.png" alt="통과하지 못한 시험 결과 창. 총점은 91점이지만 답변 검증이 최소 점수보다 1점 모자라 통과하지 못했다는 이유가 총점보다 앞에 나온다">
+      <figcaption><span class="step">15</span><b>통과하지 못한 결과.</b> 총점보다 이유를 앞세웁니다. 그림은 총점이 91점인데 답변 검증이 최소 점수에 1점 모자란 경우입니다. 무엇이 부족했는지, 받은 점수와 최소 점수, 다음에 무엇을 하면 되는지를 한 줄씩 적고, 근거가 된 대화와 다시 볼 강의로 이어집니다.</figcaption>
     </figure>
     <figure>
       <img src="shots/16-levelup.png" alt="레벨업 연출. 화면이 어두워지고 가운데에 초록 모자로 바뀐 내 캐릭터가 크게 보인다">

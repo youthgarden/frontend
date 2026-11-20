@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { errorMessage } from '../../api';
-import { api } from '../../api';
+import { api, errorMessage, useGiveUpAttempt, useSubmitAttempt } from '../../api';
 import type { AttemptEventType, ChatMessage } from '../../api';
 import { Button, Dialog, Loading, Notice, useMapLock } from '../kit';
 import { AnswerPane } from './AnswerPane';
@@ -41,6 +40,8 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
     const answerRef = useRef(answer);
     const [pane, setPane] = useState<Pane>('task');
     const [chatUnread, setChatUnread] = useState(false);
+    // 새 AI 답변의 수. 좁은 화면에서 대화 영역이 숨어 있어도 화면 낭독기가 도착을 알리게 한다
+    const [replyCount, setReplyCount] = useState(0);
     const [expired, setExpired] = useState(false);
     const [modal, setModal] = useState<Modal>(null);
     const [modalBusy, setModalBusy] = useState(false);
@@ -49,6 +50,8 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
     const [phase, setPhase] = useState<Phase>({ kind: 'working' });
     // 제출·포기 요청은 한 번만 나가게 막는다 (제출 클릭과 시간 종료가 겹쳐도)
     const finishingRef = useRef(false);
+    const { mutateAsync: submitAttempt } = useSubmitAttempt();
+    const { mutateAsync: giveUpAttempt } = useGiveUpAttempt();
 
     // 아래 콜백들은 서로를 부르므로 ref로 이어 둔다
     const onTimeOverRef = useRef<() => void>(() => {});
@@ -69,7 +72,7 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
         setModal(null);
         setPhase({ kind: 'submitting', auto });
         try {
-            await api.submit(attemptId, answerRef.current);
+            await submitAttempt({ id: attemptId, answer: answerRef.current });
             onSubmitted(attemptId);
         } catch (e) {
             // 이미 제출됨: 타이머 자동 제출과 겹쳤거나, 마감 + 1분이 지나 서버가 제출했다
@@ -84,7 +87,7 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
             finishingRef.current = false;
             setPhase({ kind: 'submitFailed', auto, message: errorMessage(e) });
         }
-    }, [attemptId, onSubmitted, saver]);
+    }, [attemptId, onSubmitted, saver, submitAttempt]);
 
     onTimeOverRef.current = () => {
         setExpired(true);
@@ -167,7 +170,7 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
         setModalBusy(true);
         setModalError(null);
         try {
-            await api.giveUp(attemptId);
+            await giveUpAttempt(attemptId);
             onGaveUp();
         } catch (e) {
             if (isCode(e, 'ATTEMPT_NOT_IN_PROGRESS')) {
@@ -247,7 +250,10 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
                             onPaste={(length) => record('PASTE', { length })}
                             onTimeOver={() => onTimeOverRef.current()}
                             onGone={(code) => onGoneRef.current(code)}
-                            onReply={() => setChatUnread((u) => u || pane !== 'chat')}
+                            onReply={() => {
+                                setChatUnread((u) => u || pane !== 'chat');
+                                setReplyCount((n) => n + 1);
+                            }}
                         />
                     </section>
                     <section id={`${idBase}-panel-answer`} aria-label="답안" className={paneClass('answer')}>
@@ -261,6 +267,12 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
                     </section>
                 </div>
             </div>
+
+            {/* 대화 영역은 좁은 화면에서 다른 탭을 보는 동안 숨겨져(display:none) 낭독되지 않는다.
+                늘 붙어 있는 이 영역에 새 문장을 끼워 넣어 답변 도착을 알린다 (key가 바뀌면 같은 문장도 다시 읽는다) */}
+            <p className="sr-only" aria-live="polite">
+                {replyCount > 0 && <span key={replyCount}>AI 답변이 도착했어요</span>}
+            </p>
 
             {modal === 'leave' && (
                 <ConfirmDialog
@@ -304,6 +316,7 @@ export function ExamRoom({ live, initialMessages, onSubmitted, onLeave, onGaveUp
                     title="답안을 제출할까요?"
                     confirmLabel="제출하기"
                     cancelLabel="계속 풀기"
+                    focusCancel
                     onConfirm={() => void submit(false)}
                     onCancel={() => setModal(null)}
                 >

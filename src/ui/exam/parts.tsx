@@ -9,7 +9,8 @@ import { Button, Chip, Dialog, PixelCharacter } from '../kit';
 export function ExaminerSay({ children, scale = 2, className = '' }: { children: ReactNode; scale?: number; className?: string }) {
     return (
         <div className={`flex items-end gap-4 ${className}`}>
-            <PixelCharacter spec={EXAMINER_SPEC} scale={scale} breathing label="AI 시험관" />
+            {/* 바로 옆 이름표가 "AI 시험관"을 읽으므로 그림은 꾸밈으로 둔다 (label을 주지 않으면 aria-hidden이 된다) */}
+            <PixelCharacter spec={EXAMINER_SPEC} scale={scale} breathing />
             <div className="relative mb-2 min-w-0 flex-1">
                 <div className="px-box-flat relative bg-white px-4 pb-3 pt-5 text-[15px] leading-7">
                     <span className="px-box-flat absolute -top-3 left-3 bg-uniform px-2 py-0.5 font-pixel text-[12px] font-bold leading-none text-white">
@@ -57,12 +58,15 @@ export function ConfirmDialog({
     );
 }
 
-/** 응시 상태 꼬리표. 색과 함께 글자로 상태를 말한다 */
+/**
+ * 응시 상태 꼬리표. 색과 함께 글자로 상태를 말한다.
+ * 통과 여부는 총점이 아니라 두 영역으로 정해지므로, 점수 앞에 "총점"을 붙여 "미달 95점"이 점수 기준처럼 읽히지 않게 한다
+ */
 export function AttemptStatusChip({ status, score, passed }: { status: AttemptStatus; score: number | null; passed: boolean | null }) {
     if (status === 'GRADING') return <Chip tone="uniform">채점 중</Chip>;
     if (status === 'GRADING_FAILED') return <Chip tone="danger">채점 실패</Chip>;
     if (status === 'IN_PROGRESS') return <Chip tone="neutral">푸는 중</Chip>;
-    return passed ? <Chip tone="ok">통과 {score}점</Chip> : <Chip tone="sun">미달 {score}점</Chip>;
+    return passed ? <Chip tone="ok">통과 · 총점 {score}점</Chip> : <Chip tone="sun">미달 · 총점 {score}점</Chip>;
 }
 
 /**

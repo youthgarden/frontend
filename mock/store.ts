@@ -54,6 +54,45 @@ export interface ScoreRow {
     score: number;
     feedback: string;
     evidence_message_id: number | null;
+    /**
+     * 답변 검증의 근거가 답안 수정 이력이면 그 이력의 순번(revisions의 index). 명세 9절의 evidence_revision_id에 해당한다.
+     * 결과 API에는 내보내지 않고, 그 내용을 feedback에 적는다
+     */
+    evidence_revision?: number | null;
+}
+
+/** 필수 요건 하나. label은 응시자에게 공개하고 rule은 채점에만 쓴다 (ERD task.grading_rubric) */
+export interface RequiredCheckDef {
+    check_id: string;
+    label: string;
+    rule: string;
+}
+
+/** 두 영역 기준 (ERD 3절) */
+export interface DualRubric {
+    version: 'DUAL_V1';
+    task_solution_min_score: number;
+    ai_use_min_score: number;
+    verify_min_score: number;
+    required_checks: RequiredCheckDef[];
+    criterion_max_scores: Record<Criterion, number>;
+}
+
+/** 예전 기준: 항목별 25점, 총점 80점 이상 통과 (ERD attempt 표의 이행 규칙) */
+export interface LegacyRubric {
+    version: 'LEGACY_TOTAL_V1';
+    criterion_max_scores: Record<Criterion, number>;
+    min_total_score: number;
+}
+
+/** task.grading_rubric, attempt.grading_rubric_snapshot */
+export type GradingRubric = DualRubric | LegacyRubric;
+
+/** attempt.required_check_results의 한 줄 */
+export interface CheckResultRow {
+    check_id: string;
+    met: boolean;
+    feedback: string;
 }
 
 /** 모의 AI가 섞은 틀린 사실이 어떻게 됐는지 */
@@ -74,6 +113,10 @@ export interface AttemptRow {
     deadline_at: number;
     submitted_at: number | null;
     answer: string | null;
+    /** 응시를 만들 때 복사한 채점 기준. 이어 풀기, 채점, 재채점, 결과 조회에 쓴다 */
+    grading_rubric_snapshot: GradingRubric;
+    /** 두 영역 기준으로 채점이 끝나면 저장. 예전 기준이면 null */
+    required_check_results: CheckResultRow[] | null;
     total_score: number | null;
     passed: boolean | null;
     leveled_up: boolean | null;
@@ -89,8 +132,18 @@ export interface AttemptRow {
 
 export type ForcedGrade = 'pass' | 'fail' | 'error';
 
+/**
+ * 검수용 "미달"의 종류. 하나의 조건만 어긋나게 만든다.
+ * task_score: 실무 과제 해결 점수 미달, required_check: 필수 요건 하나 미충족,
+ * ai_score: AI 활용 역량 점수 미달(검증 최소 점수는 충족), verify_min: 검증 최소 점수만 미달(영역 점수는 충족)
+ */
+export const FAIL_REASONS = ['task_score', 'required_check', 'ai_score', 'verify_min'] as const;
+export type FailReason = (typeof FAIL_REASONS)[number];
+
 export interface UserFlags {
     next_grade?: ForcedGrade;
+    /** next_grade가 fail일 때만 쓴다. 없으면 규칙 점수가 이미 미달이면 그대로, 아니면 두 영역 점수를 모두 낮춘다 */
+    next_grade_reason?: FailReason;
     next_ai_failure?: boolean;
 }
 
@@ -110,7 +163,8 @@ export interface DbData {
     flags: Record<string, UserFlags>;
 }
 
-export const DB_VERSION = 1;
+/** 2: 응시에 채점 기준 스냅샷과 필수 요건 판정을 더했다 (두 영역 채점). 1로 저장된 파일은 시드로 다시 시작한다 */
+export const DB_VERSION = 2;
 
 function isDb(v: unknown): v is DbData {
     if (!v || typeof v !== 'object') return false;

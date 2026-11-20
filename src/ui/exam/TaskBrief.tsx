@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { errorMessage } from '../../api';
-import { api } from '../../api';
-import type { TaskDetail } from '../../api';
+import { errorMessage, useStartAttempt, useTask } from '../../api';
 import { Button, Dialog, Loading, Notice } from '../kit';
+import { CriteriaGuide } from './Criteria';
 import { ExaminerSay } from './parts';
 import type { LiveAttempt } from './useCountdown';
-import { CRITERION_LOOKS_AT, isCode, type TaskRef } from './util';
+import { isCode, type TaskRef } from './util';
 
 // 과제 안내. 시험관이 상황, 해야 할 일, 자료, 시간, 평가 기준을 알려 주고, 시작 전에 알아야 할 사실을 짚는다.
 
@@ -17,42 +16,32 @@ export function TaskBrief({ task, onStarted, onLocked, onAlreadyInProgress, onBa
     onBackToList: () => void;
     onClose: () => void;
 }) {
-    const [detail, setDetail] = useState<TaskDetail | null>(null);
-    const [loadError, setLoadError] = useState<string | null>(null);
-    const [tries, setTries] = useState(0);
-    const [starting, setStarting] = useState(false);
+    const query = useTask(task.id);
+    const detail = query.data ?? null;
+    // 지난번 실패가 저장소에 남아 있을 수 있다. 다시 묻는 중에는 판단하지 않는다 (그사이 강의를 들었을 수 있다)
+    const failed = query.isFetching ? null : query.error;
+    const locked = isCode(failed, 'LECTURE_NOT_COMPLETED');
+    const loadError = failed && !locked ? errorMessage(failed) : null;
+    const startAttempt = useStartAttempt();
+    // 성공한 뒤 화면이 넘어갈 때까지도 시작 중으로 보인다
+    const starting = startAttempt.isPending || startAttempt.isSuccess;
     const [startError, setStartError] = useState<string | null>(null);
     // 두 번 눌러도 시작 요청은 한 번만 나간다
     const startingRef = useRef(false);
 
     useEffect(() => {
-        let cancelled = false;
-        setLoadError(null);
-        api.task(task.id).then(
-            (d) => !cancelled && setDetail(d),
-            (e) => {
-                if (cancelled) return;
-                if (isCode(e, 'LECTURE_NOT_COMPLETED')) onLocked();
-                else setLoadError(errorMessage(e));
-            },
-        );
-        return () => {
-            cancelled = true;
-        };
+        if (locked) onLocked();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [task.id, tries]);
+    }, [locked]);
 
     const start = async () => {
         if (startingRef.current) return;
         startingRef.current = true;
-        setStarting(true);
         setStartError(null);
         try {
-            const attempt = await api.startAttempt(task.id);
-            onStarted({ attempt, receivedAt: performance.now() });
+            onStarted(await startAttempt.mutateAsync(task.id));
         } catch (e) {
             startingRef.current = false;
-            setStarting(false);
             if (isCode(e, 'LECTURE_NOT_COMPLETED')) onLocked();
             else if (isCode(e, 'ATTEMPT_ALREADY_IN_PROGRESS')) onAlreadyInProgress();
             else setStartError(`시험을 시작하지 못했어요. ${errorMessage(e)}`);
@@ -75,7 +64,7 @@ export function TaskBrief({ task, onStarted, onLocked, onAlreadyInProgress, onBa
             }
         >
             {loadError && (
-                <Notice tone="danger" action={<Button size="sm" onClick={() => setTries((n) => n + 1)}>다시 시도</Button>}>
+                <Notice tone="danger" action={<Button size="sm" onClick={() => void query.refetch()}>다시 시도</Button>}>
                     과제 안내를 불러오지 못했어요. {loadError}
                 </Notice>
             )}
@@ -120,19 +109,9 @@ export function TaskBrief({ task, onStarted, onLocked, onAlreadyInProgress, onBa
                     <BriefSection title="이렇게 평가해요">
                         <p className="mb-3 text-[14px] text-ink-soft">
                             정답 하나를 맞히는 시험이 아니에요. 결과물과 함께 AI를 어떻게 활용했는지를 봐요.
-                            네 항목을 더해 <strong className="text-ink">100점 중 {detail.pass_score}점 이상</strong>이면 통과예요.
+                            이 기준은 시험을 보는 동안에도 <strong className="text-ink">평가 기준</strong> 탭에서 다시 볼 수 있어요.
                         </p>
-                        <ul className="grid gap-2 sm:grid-cols-2">
-                            {detail.criteria.map((c) => (
-                                <li key={c.code} className="border-2 border-line bg-white px-3 py-2.5">
-                                    <p className="flex items-baseline justify-between gap-2">
-                                        <span className="font-pixel text-[14px] font-bold">{c.name}</span>
-                                        <span className="font-pixel text-[13px] text-ink-soft">{c.max_score}점</span>
-                                    </p>
-                                    <p className="mt-1 text-[14px] leading-6">{CRITERION_LOOKS_AT[c.code]}</p>
-                                </li>
-                            ))}
-                        </ul>
+                        <CriteriaGuide criteria={detail.criteria} req={detail.pass_requirements} />
                     </BriefSection>
 
                     {startError && <Notice tone="danger">{startError}</Notice>}
@@ -151,10 +130,13 @@ function BriefSection({ title, children }: { title: string; children: ReactNode 
     );
 }
 
-/** 필수 강의를 안 들어서 과제를 볼 수 없을 때 (목록을 연 뒤 상태가 바뀐 경우) */
-export function LockedNotice({ task, onOpenLecture, onBackToList, onClose }: {
+/**
+ * 필수 강의를 안 들어서 과제를 볼 수 없을 때 (목록을 연 뒤 상태가 바뀐 경우).
+ * 명세 6절·10절대로 필수 강의를 알리고 강의실로 보낸다 (시험 창을 닫고 맵의 캐릭터를 강의실로 옮긴다)
+ */
+export function LockedNotice({ task, onGoToClassroom, onBackToList, onClose }: {
     task: TaskRef;
-    onOpenLecture: (lectureId: number) => void;
+    onGoToClassroom: () => void;
     onBackToList: () => void;
     onClose: () => void;
 }) {
@@ -167,15 +149,15 @@ export function LockedNotice({ task, onOpenLecture, onBackToList, onClose }: {
             onClose={onClose}
             footer={
                 <>
-                    <Button onClick={onBackToList} className={lecture ? '' : 'mr-auto'}>과제 목록으로</Button>
-                    {lecture && <Button variant="primary" onClick={() => onOpenLecture(lecture.id)} autoFocus>강의 들으러 가기</Button>}
+                    <Button onClick={onBackToList} className="mr-auto">과제 목록으로</Button>
+                    <Button variant="primary" onClick={onGoToClassroom} autoFocus>강의실로 이동</Button>
                 </>
             }
         >
             <ExaminerSay>
-                이 과제는 아래 강의를 먼저 들어야 볼 수 있어요. 강의를 끝까지 들으면(80% 이상) 시험을 볼 수 있어요.
+                이 과제는 아래 강의를 먼저 들어야 볼 수 있어요. 강의실에서 이 강의를 80% 이상 들으면 시험을 볼 수 있어요.
                 {lecture && (
-                    <strong className="mt-2 block font-bold">{lecture.title}</strong>
+                    <strong className="mt-2 block font-bold">필수 강의: {lecture.title}</strong>
                 )}
             </ExaminerSay>
         </Dialog>

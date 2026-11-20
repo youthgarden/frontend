@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react';
-import { errorMessage } from '../../api';
-import { api } from '../../api';
-import type { AttemptListItem } from '../../api';
+import { useMemo } from 'react';
+import { errorMessage, useAttemptHistory, type AttemptListItem } from '../../api';
 import { Button, Dialog, Loading, Notice } from '../kit';
 import { AttemptStatusChip } from './parts';
 import { formatDateTime } from './util';
@@ -16,39 +14,26 @@ export function History({ onOpen, onNew, onBack, onClose }: {
     onBack: () => void;
     onClose: () => void;
 }) {
-    const [items, setItems] = useState<AttemptListItem[] | null>(null);
-    const [total, setTotal] = useState(0);
-    const [page, setPage] = useState(1);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [tries, setTries] = useState(0);
-
-    useEffect(() => {
-        let cancelled = false;
-        setLoading(true);
-        setError(null);
-        api.attempts({ page, size: PAGE_SIZE }).then(
-            (res) => {
-                if (cancelled) return;
-                // 같은 응시가 두 번 들어오지 않게 id로 거른다 (사이에 새 응시가 생기면 페이지가 밀릴 수 있다)
-                setItems((prev) => {
-                    const base = page === 1 ? [] : prev ?? [];
-                    const seen = new Set(base.map((a) => a.id));
-                    return [...base, ...res.items.filter((a) => !seen.has(a.id))];
-                });
-                setTotal(res.total);
-                setLoading(false);
-            },
-            (e) => {
-                if (cancelled) return;
-                setError(errorMessage(e));
-                setLoading(false);
-            },
-        );
-        return () => {
-            cancelled = true;
-        };
-    }, [page, tries]);
+    const query = useAttemptHistory(PAGE_SIZE);
+    const pages = query.data?.pages;
+    // 같은 응시가 두 번 들어오지 않게 id로 거른다 (사이에 새 응시가 생기면 페이지가 밀릴 수 있다)
+    const items = useMemo(() => {
+        if (!pages) return null;
+        const seen = new Set<number>();
+        const out: AttemptListItem[] = [];
+        for (const a of pages.flatMap((p) => p.items)) {
+            if (!seen.has(a.id)) {
+                seen.add(a.id);
+                out.push(a);
+            }
+        }
+        return out;
+    }, [pages]);
+    const total = pages?.[pages.length - 1].total ?? 0;
+    const loading = query.isFetching;
+    const error = query.error && !loading ? errorMessage(query.error) : null;
+    // 실패한 것이 더 보기였으면 더 보기를, 처음 불러오기였으면 처음부터 다시 부른다
+    const retry = () => void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch());
 
     const empty = items !== null && items.length === 0;
 
@@ -93,13 +78,13 @@ export function History({ onOpen, onNew, onBack, onClose }: {
                 </ul>
             )}
             {error && (
-                <Notice tone="danger" className="mt-3" action={<Button size="sm" onClick={() => setTries((n) => n + 1)}>다시 시도</Button>}>
+                <Notice tone="danger" className="mt-3" action={<Button size="sm" onClick={retry}>다시 시도</Button>}>
                     지난 결과를 불러오지 못했어요. {error}
                 </Notice>
             )}
-            {items && items.length > 0 && items.length < total && !error && (
+            {items && items.length > 0 && query.hasNextPage && !error && (
                 <div className="mt-4 flex justify-center">
-                    <Button onClick={() => setPage((p) => p + 1)} busy={loading}>더 보기 ({items.length} / {total})</Button>
+                    <Button onClick={() => void query.fetchNextPage()} busy={query.isFetchingNextPage}>더 보기 ({items.length} / {total})</Button>
                 </div>
             )}
         </Dialog>

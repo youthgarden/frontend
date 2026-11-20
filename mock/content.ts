@@ -1,6 +1,10 @@
 // 시드 콘텐츠: 직무, 강의 5개, 과제 5개와 제공 자료.
 // 기획서 2_핵심기능.md 7절 "과제와 강의" 표를 따른다. 자료 속 회사와 사람은 모두 지어낸 것이다.
 // 과제마다 "AI가 자료와 다르게 말하는 사실(함정)" 하나를 둔다. 평가 항목 "답변 검증"을 검수하기 위해서다.
+// 과제마다 채점 기준(ERD task.grading_rubric)과 필수 요건을 둔다. 필수 요건의 판정은 실제 서버에서는 AI가 rule을 읽고
+// 하지만, 모의 서버는 judges의 정해진 규칙으로 한다.
+
+import type { Criterion, DualRubric, LegacyRubric, RequiredCheckDef } from './store';
 
 export interface JobDef { id: number; name: string }
 
@@ -29,7 +33,12 @@ export interface TrapDef {
     correctPattern: RegExp;
     /** 사용자가 이 주제를 지적하는지 */
     topicPattern: RegExp;
+    /** 올바른 값이 있는 자료의 짧은 이름 (답변 검증 피드백에 "무엇을 어떤 자료와 대조했는지"로 쓴다) */
+    source: string;
 }
+
+/** 필수 요건 하나를 최종 답안으로 판정한다. feedback은 답안과 자료에 근거한 판정 이유 */
+export type CheckJudge = (answer: string) => { met: boolean; feedback: string };
 
 /** 결과물 채점에서 보는 핵심 요소 */
 export interface ElementDef { label: string; pattern: RegExp }
@@ -64,6 +73,12 @@ export interface TaskDef {
     seedPrompts: string[];
     /** 시드용: 잘 푼 답안 */
     seedAnswer: string;
+    /** 채점 기준 (ERD task.grading_rubric). 응시를 만들 때 응시에 복사한다 */
+    rubric: DualRubric;
+    /** 필수 요건의 판정 규칙. check_id로 찾는다 */
+    judges: Record<string, CheckJudge>;
+    /** 총평에 넣는 "현업에서 다시 쓸 행동 한 가지" */
+    practice: string;
 }
 
 export const JOBS: JobDef[] = [{ id: 1, name: '무역 사무' }];
@@ -76,14 +91,45 @@ export const LECTURES: LectureDef[] = [
     { id: 5, job_id: 1, title: 'AI로 수출입 통관 절차 조사하고 정리하기', youtube_video_id: 'mock:lecture-5', duration_sec: 480, sort_order: 5 },
 ];
 
+/** 채점 항목과 소속 영역 (ERD 3절). 배점은 응시의 채점 기준 스냅샷에서 가져온다 */
 export const CRITERIA = [
-    { code: 'RESULT', name: '결과물', max_score: 25 },
-    { code: 'PROMPT', name: '질문 설계', max_score: 25 },
-    { code: 'VERIFY', name: '답변 검증', max_score: 25 },
-    { code: 'IMPROVE', name: '개선 과정', max_score: 25 },
+    { code: 'RESULT', name: '결과물', dimension: 'TASK_SOLUTION' },
+    { code: 'PROMPT', name: '질문 설계', dimension: 'AI_USE' },
+    { code: 'VERIFY', name: '답변 검증', dimension: 'AI_USE' },
+    { code: 'IMPROVE', name: '개선 과정', dimension: 'AI_USE' },
 ] as const;
 
-export const PASS_SCORE = 80;
+/** 영역 이름 (명세 7절 GET /attempts/{id}의 dimensions[].name) */
+export const DIMENSIONS = [
+    { code: 'TASK_SOLUTION', name: '실무 과제 해결' },
+    { code: 'AI_USE', name: 'AI 활용 역량' },
+] as const;
+
+/** MVP의 DUAL_V1 배점 (ERD 3절) */
+export const DUAL_MAX_SCORES: Record<Criterion, number> = { RESULT: 50, PROMPT: 15, VERIFY: 20, IMPROVE: 15 };
+
+function dualRubric(required_checks: RequiredCheckDef[]): DualRubric {
+    return {
+        version: 'DUAL_V1',
+        task_solution_min_score: 40,
+        ai_use_min_score: 40,
+        verify_min_score: 12,
+        required_checks,
+        criterion_max_scores: { ...DUAL_MAX_SCORES },
+    };
+}
+
+/** 예전 기준. 전환 전에 시작한 응시에 채운다 (ERD attempt 표) */
+export const LEGACY_RUBRIC: LegacyRubric = {
+    version: 'LEGACY_TOTAL_V1',
+    criterion_max_scores: { RESULT: 25, PROMPT: 25, VERIFY: 25, IMPROVE: 25 },
+    min_total_score: 80,
+};
+
+/** 답안을 문장 단위로 나눈다 (마침표나 줄바꿈 기준) */
+function sentences(text: string) {
+    return text.split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim()).filter(Boolean);
+}
 
 // ───────────────────────── 과제 1: 납기 지연 항의 메일 회신 ─────────────────────────
 
@@ -180,6 +226,13 @@ Haneul Kim
 Overseas Sales, Hanbit Living Co., Ltd.`;
 }
 
+/** 과제 1: AI가 섞는 틀린 일정 */
+const T1_WRONG = /(11\s*월\s*21\s*일|11\/21|nov(ember)?\.?\s*21|12\s*월\s*6\s*일|12\/0?6(?!\d)|dec(ember)?\.?\s*6(?!\d))/i;
+/** 과제 1: 일정표에 "예상"으로 표시된 창고 입고일 */
+const T1_WAREHOUSE = /(dec(ember)?\.?\s*0?3(?!\d)|12\/0?3(?!\d)|12\s*월\s*3\s*일)/i;
+/** 확정이 아니라 예상임을 밝히는 말 */
+const HEDGE = /(expect|estimat|approx|anticipat|projected|tentativ|예상|예정|목표)/i;
+
 const TASK1: TaskDef = {
     id: 1,
     job_id: 1,
@@ -198,9 +251,10 @@ const TASK1: TaskDef = {
         label: '새 선적 일정',
         wrong: '11월 21일 출항, 12월 6일 도착',
         correct: '11월 17일 출항, 12월 1일 도착',
-        wrongPattern: /(11\s*월\s*21\s*일|11\/21|nov(ember)?\.?\s*21|12\s*월\s*6\s*일|12\/0?6(?!\d)|dec(ember)?\.?\s*6(?!\d))/i,
+        wrongPattern: T1_WRONG,
         correctPattern: /(11\s*월\s*17\s*일|11\/17|nov(ember)?\.?\s*17|12\s*월\s*1\s*일|12\/0?1(?!\d)|dec(ember)?\.?\s*1(?![\d,]?\d))/i,
         topicPattern: /(일정|날짜|선적일|출항|도착|ETD|ETA|언제|며칠|스케줄)/i,
+        source: '선적 일정표',
     },
     elements: [
         { label: '사과', pattern: /(apolog|sorry|regret)/i },
@@ -272,6 +326,34 @@ ${t1Draft(w)}
         '어조를 더 정중하게 다듬어 줘. 변명처럼 들리지 않게.',
     ],
     seedAnswer: t1Draft(false),
+    rubric: dualRubric([
+        {
+            check_id: 'SHIPPING_DATE',
+            label: '확정 선적일을 정확히 안내하고 미확정 일정을 확정처럼 약속하지 않기',
+            rule: '최종 회신의 확정 선적일(출항 11월 17일)이 제공된 선적 일정표와 일치하고, 일정표와 다른 날짜(11월 21일 출항, 12월 6일 도착)가 없으며, 일정표에서 예상으로 표시된 창고 입고일(12월 3일)을 확정 일정이라고 약속한 문장이 없으면 충족한다.',
+        },
+    ]),
+    judges: {
+        SHIPPING_DATE: (answer) => {
+            const etd = /(nov(ember)?\.?\s*17|11\/17|11\s*월\s*17\s*일)/i.test(answer);
+            const wrong = T1_WRONG.test(answer);
+            const promised = sentences(answer).find((s) => T1_WAREHOUSE.test(s) && !HEDGE.test(s));
+            if (wrong) {
+                return { met: false, feedback: '회신에 선적 일정표와 다른 날짜(11월 21일 출항이나 12월 6일 도착)가 있어요. 일정표의 확정 출항일은 11월 17일이에요.' };
+            }
+            if (!etd) return { met: false, feedback: '회신에서 새 출항일을 찾지 못했어요. 바이어가 물은 새 일정에는 선적 일정표의 확정 출항일(11월 17일)이 들어가야 해요.' };
+            if (promised) {
+                return { met: false, feedback: '출항일(11월 17일)은 일정표와 맞지만, 일정표에 "예상"으로 표시된 창고 입고일(12월 3일)을 확정된 일정처럼 약속했어요.' };
+            }
+            return {
+                met: true,
+                feedback: T1_WAREHOUSE.test(answer)
+                    ? '회신의 출항일(11월 17일)이 선적 일정표와 일치하고, 창고 입고일(12월 3일)은 예상 일정으로 안내했어요.'
+                    : '회신의 출항일(11월 17일)이 선적 일정표와 일치하고, 확정되지 않은 일정을 약속한 문장이 없어요.',
+            };
+        },
+    },
+    practice: '바이어에게 보내기 전에 AI 초안에 들어간 모든 날짜가 확정된 일정인지 최신 선적 일정표와 대조해 보세요.',
 };
 
 // ───────────────────────── 과제 2: 견적서 작성 ─────────────────────────
@@ -343,6 +425,9 @@ function t2Quote(wrong: boolean) {
 - Validity: 30 days from the date of this quotation`;
 }
 
+/** 과제 2: AI가 섞는 틀린 할인 값 */
+const T2_WRONG = /(10\.80|10,800|26,200|28,145)/;
+
 const TASK2: TaskDef = {
     id: 2,
     job_id: 1,
@@ -361,9 +446,10 @@ const TASK2: TaskDef = {
         label: 'DL-200 수량 할인',
         wrong: '10% 할인, 단가 USD 10.80',
         correct: '5% 할인, 단가 USD 11.40',
-        wrongPattern: /(10\.80|10,800|26,200|28,145)/,
+        wrongPattern: T2_WRONG,
         correctPattern: /(11\.40|11,400|26,800|28,745)/,
         topicPattern: /(할인|단가|가격|DL-200|금액|합계|총액)/i,
+        source: '단가표',
     },
     elements: [
         { label: 'DL-200 할인 단가(USD 11.40)', pattern: /(11\.40|11,400)/ },
@@ -431,6 +517,42 @@ ${t2Quote(w)}
         '납기 문장을 더 구체적으로 고쳐 줘. 1월 말 도착 조건을 지킬 수 있다는 점이 드러나게.',
     ],
     seedAnswer: t2Quote(false),
+    rubric: dualRubric([
+        {
+            check_id: 'QUOTE_PRICE',
+            label: '단가표의 수량 할인만 적용해 모델별 단가와 두 조건의 합계를 정확히 적기',
+            rule: 'DL-200 단가가 USD 11.40(5% 할인), FOB 부산 합계가 USD 26,800, CIF 함부르크 합계가 USD 28,745로 적혀 있고, 승인 없는 할인을 적용한 값(USD 10.80, 10,800, 26,200, 28,145)이 없으면 충족한다.',
+        },
+        {
+            check_id: 'QUOTE_TERMS',
+            label: '결제 조건, 납기, 견적 유효기간을 모두 밝히기',
+            rule: '견적서에 결제 조건(T/T 선금), 납기(주문 후 선적 시점), 견적 유효기간이 모두 있으면 충족한다.',
+        },
+    ]),
+    judges: {
+        QUOTE_PRICE: (answer) => {
+            if (T2_WRONG.test(answer)) {
+                return { met: false, feedback: '견적서에 단가표에 없는 할인을 적용한 값(USD 10.80 등)이 있어요. 단가표의 수량 할인은 5%라 DL-200 단가는 USD 11.40이에요.' };
+            }
+            const miss = [
+                /11\.40/.test(answer) ? null : 'DL-200 단가(USD 11.40)',
+                /26,?800/.test(answer) ? null : 'FOB 합계(USD 26,800)',
+                /28,?745/.test(answer) ? null : 'CIF 합계(USD 28,745)',
+            ].filter((x): x is string => x !== null);
+            if (miss.length) return { met: false, feedback: `단가표로 계산한 값 가운데 견적서에 없는 것이 있어요: ${miss.join(', ')}.` };
+            return { met: true, feedback: 'DL-200 단가(USD 11.40)와 FOB·CIF 합계가 단가표의 할인율(5%)로 계산한 값과 일치해요.' };
+        },
+        QUOTE_TERMS: (answer) => {
+            const miss = [
+                /(T\/T|advance|선금|deposit|payment)/i.test(answer) ? null : '결제 조건',
+                /(deliver|shipment|lead time|납기|선적)/i.test(answer) ? null : '납기',
+                /(validity|valid|유효)/i.test(answer) ? null : '유효기간',
+            ].filter((x): x is string => x !== null);
+            if (miss.length) return { met: false, feedback: `견적서에 ${miss.join(', ')}에 관한 내용이 없어요. 단가표의 "견적 조건 기준"에 있는 값을 적어야 해요.` };
+            return { met: true, feedback: '결제 조건(T/T 30% 선금), 납기, 유효기간(30일)을 모두 밝혔어요.' };
+        },
+    },
+    practice: '견적서를 보내기 전에 AI가 계산한 단가와 합계를 단가표로 직접 다시 계산해 보세요.',
 };
 
 // ───────────────────────── 과제 3: 신용장 조건 검토 ─────────────────────────
@@ -508,6 +630,10 @@ ${ship}${items.map((t, i) => `${i + n}. ${t}`).join('\n')}
 → 선적 전에 수입상(PT Sinar Abadi)에게 위 항목의 L/C 수정(amendment)을 요청해야 해요.`;
 }
 
+/** 과제 3: AI가 섞는 틀린 최종 선적일과, 원문의 값 */
+const T3_WRONG = /(12\s*월\s*25\s*일|12\/25|261225|dec(ember)?\.?\s*25)/i;
+const T3_CORRECT = /(12\s*월\s*5\s*일|12\/0?5(?!\d)|261205|2026-12-05|dec(ember)?\.?\s*0?5(?!\d))/i;
+
 const TASK3: TaskDef = {
     id: 3,
     job_id: 1,
@@ -526,9 +652,10 @@ const TASK3: TaskDef = {
         label: 'L/C 최종 선적일(44C)',
         wrong: '12월 25일',
         correct: '12월 5일 (261205)',
-        wrongPattern: /(12\s*월\s*25\s*일|12\/25|261225|dec(ember)?\.?\s*25)/i,
-        correctPattern: /(12\s*월\s*5\s*일|12\/0?5(?!\d)|261205|2026-12-05|dec(ember)?\.?\s*0?5(?!\d))/i,
+        wrongPattern: T3_WRONG,
+        correctPattern: T3_CORRECT,
         topicPattern: /(선적일|44C|선적 기한|최종 선적|날짜|기한|일정)/i,
+        source: '신용장 원문',
     },
     elements: [
         { label: '최종 선적일(44C) 불일치', pattern: /(44C|12\s*월\s*5\s*일|261205)/i },
@@ -578,6 +705,25 @@ ${t3Memo(w)}
         '검사증명서 조항이 왜 위험한지 한 문장 더 보완해 줘.',
     ],
     seedAnswer: t3Memo(false),
+    rubric: dualRubric([
+        {
+            check_id: 'LC_SHIPMENT_DATE',
+            label: '신용장의 최종 선적일이 선적 계획과 맞지 않는 점을 짚고 수정을 요청하기',
+            rule: '검토 결과에 L/C 44C 최종 선적일(2026년 12월 5일)이 선적 계획(12월 15일)·계약(12월 20일)과 맞지 않는다는 지적과 수정(amendment) 요청이 있고, 최종 선적일을 12월 25일로 잘못 적은 문장이 없으면 충족한다.',
+        },
+    ]),
+    judges: {
+        LC_SHIPMENT_DATE: (answer) => {
+            if (T3_WRONG.test(answer)) {
+                return { met: false, feedback: '검토 결과에 최종 선적일을 신용장 원문과 다르게(12월 25일) 적은 부분이 있어요. 원문의 44C는 261205, 즉 12월 5일이에요.' };
+            }
+            const named = /44C/i.test(answer) || T3_CORRECT.test(answer);
+            if (!named) return { met: false, feedback: '최종 선적일(44C, 12월 5일)이 선적 계획(12월 15일)보다 빠르다는 점을 검토 결과에서 찾지 못했어요. 이대로면 선적일을 맞출 수 없어 대금을 받지 못할 수 있어요.' };
+            if (!/(수정|amend|어멘드)/i.test(answer)) return { met: false, feedback: '최종 선적일의 문제는 짚었지만, 수입상에게 무엇으로 고쳐 달라고 할지(수정 요청)가 없어요.' };
+            return { met: true, feedback: '최종 선적일(44C, 12월 5일)이 선적 계획보다 빠르다는 점을 짚고 수정을 요청했어요.' };
+        },
+    },
+    practice: 'L/C를 받으면 날짜 조항(44C, 31D, 48)부터 계약서와 선적 계획에 한 줄씩 맞춰 보세요.',
 };
 
 // ───────────────────────── 과제 4: 선적 서류 대조 ─────────────────────────
@@ -645,6 +791,9 @@ ${rows.join('\n')}
 - B/L은 아직 초안이므로 선사(포워더)에 위 항목의 정정을 요청한 뒤 원본을 받아요.`;
 }
 
+/** 과제 4: AI가 섞는 틀린 사실 ("중량이 일치한다") */
+const T4_WRONG = /((중량|무게|G\.?\s?W)[^\n]{0,25}(일치|같|문제\s*없)|weights? (match|are the same))/i;
+
 const TASK4: TaskDef = {
     id: 4,
     job_id: 1,
@@ -663,9 +812,10 @@ const TASK4: TaskDef = {
         label: 'B/L 총중량',
         wrong: '세 서류 모두 6,420kg으로 일치',
         correct: 'B/L 6,240kg ↔ 포장 명세서 6,420kg',
-        wrongPattern: /((중량|무게|G\.?\s?W)[^\n]{0,25}(일치|같|문제\s*없)|weights? (match|are the same))/i,
+        wrongPattern: T4_WRONG,
         correctPattern: /6,?240/,
         topicPattern: /(중량|무게|weight|G\.?\s?W|kg)/i,
+        source: '포장 명세서와 B/L 초안',
     },
     elements: [
         { label: '박스 수(330 ↔ 320)', pattern: /330/ },
@@ -712,6 +862,27 @@ B/L 초안의 Gross Weight는 **6,240 KGS**이고, 포장 명세서의 총중량
         '수하인 이름 항목은 왜 고쳐야 하는지 한 줄 덧붙여 수정해 줘.',
     ],
     seedAnswer: t4List(false),
+    rubric: dualRubric([
+        {
+            check_id: 'BL_NUMBERS',
+            label: '세 서류의 숫자 항목(박스 수, 중량)을 모두 대조해 다른 곳을 정정 항목에 넣기',
+            rule: '정정 항목에 B/L의 박스 수(330 CTNS ↔ 포장 명세서 320 ctns)와 총중량(6,240 KGS ↔ 6,420 kg)이 모두 있고, 중량이 서류끼리 일치한다고 적은 문장이 없으면 충족한다.',
+        },
+    ]),
+    judges: {
+        BL_NUMBERS: (answer) => {
+            if (T4_WRONG.test(answer)) {
+                return { met: false, feedback: '총중량이 서류끼리 일치한다고 적었어요. B/L 초안의 총중량은 6,240kg이라 포장 명세서(6,420kg)와 달라요.' };
+            }
+            const miss = [
+                /330/.test(answer) ? null : '박스 수(B/L 330 ↔ 포장 명세서 320)',
+                /6,?240/.test(answer) ? null : '총중량(B/L 6,240kg ↔ 포장 명세서 6,420kg)',
+            ].filter((x): x is string => x !== null);
+            if (miss.length) return { met: false, feedback: `정정 항목에서 빠진 숫자 오류가 있어요: ${miss.join(', ')}.` };
+            return { met: true, feedback: '박스 수(330 ↔ 320)와 총중량(6,240 ↔ 6,420)의 차이를 모두 정정 항목에 넣었어요.' };
+        },
+    },
+    practice: 'B/L 초안이 오면 박스 수, 중량, 항차를 송장과 포장 명세서에 나란히 놓고 한 줄씩 대조해 보세요.',
 };
 
 // ───────────────────────── 과제 5: 수출 통관 절차 정리 ─────────────────────────
@@ -792,6 +963,7 @@ const TASK5: TaskDef = {
         wrongPattern: /60\s*일/,
         correctPattern: /30\s*일/,
         topicPattern: /(기한|기간|수리일|며칠|언제까지|30|60|선적 의무)/,
+        source: '사내 안내 자료',
     },
     elements: [
         { label: '수출신고(UNI-PASS)', pattern: /(수출\s*신고|UNI-?PASS)/i },
@@ -840,6 +1012,21 @@ ${t5Sheet(w)}
         '약어에 한글 뜻을 붙여서 신입이 읽기 쉽게 다듬어 줘.',
     ],
     seedAnswer: t5Sheet(false),
+    rubric: dualRubric([
+        {
+            check_id: 'EXPORT_SHIP_DEADLINE',
+            label: '수출신고 수리 뒤 선적해야 하는 기한을 사내 안내 자료대로 정확히 적기',
+            rule: '정리 자료에 "수출신고 수리일로부터 30일 안에 선적"이 있고, 60일처럼 자료와 다른 기한이 없으면 충족한다.',
+        },
+    ]),
+    judges: {
+        EXPORT_SHIP_DEADLINE: (answer) => {
+            if (/60\s*일/.test(answer)) return { met: false, feedback: '정리 자료에 선적 기한이 60일로 적혀 있어요. 사내 안내 자료 3번의 기한은 수리일로부터 30일이에요.' };
+            if (!/30\s*일/.test(answer)) return { met: false, feedback: '수출신고 수리 뒤 선적 기한(30일)을 정리 자료에서 찾지 못했어요. 신입이 가장 놓치기 쉬운 기한이에요.' };
+            return { met: true, feedback: '수출신고 수리일로부터 30일 안에 선적해야 한다는 기한을 사내 안내 자료대로 적었어요.' };
+        },
+    },
+    practice: '신입용 자료를 만들 때는 AI가 말한 기한과 숫자를 사내 안내 자료 원문으로 한 번 더 확인해 보세요.',
 };
 
 export const TASKS: TaskDef[] = [TASK1, TASK2, TASK3, TASK4, TASK5];

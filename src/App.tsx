@@ -66,11 +66,16 @@ function MapScreen() {
     }, [pendingLevel, reloadMe]);
 
     const showTutorial = (!me.tutorial_seen && !tutorialDismissed) || helpOpen;
+    // 큰 창(강의, 시험, 레벨업 연출, 첫 입장 안내)이 떠 있는 동안 뒤에 가려진 맵과 HUD를 Tab 순서와 클릭에서 뺀다.
+    // 아래 창들은 모두 이 조건일 때만 뜬다. 감싸는 요소는 display:contents라 배치에 끼어들지 않는다
+    const behindOverlay = overlay !== null || pendingLevel !== null || showTutorial;
 
     return (
         <>
-            <PhaserGame profile={{ userId: me.id, nickname: me.nickname, level: me.level }} />
-            <Hud onOpenHelp={() => setHelpOpen(true)} />
+            <div className="contents" inert={behindOverlay}>
+                <PhaserGame profile={{ userId: me.id, nickname: me.nickname, level: me.level }} />
+                <Hud onOpenHelp={() => setHelpOpen(true)} />
+            </div>
 
             {overlay?.kind === 'lecture' && (
                 <LectureOverlay initialLectureId={overlay.lectureId} onClose={closeOverlay} />
