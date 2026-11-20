@@ -13,6 +13,7 @@ vi.mock('../../api', () => ({
     getAccessToken: mocks.getAccessToken,
     refreshAccessToken: mocks.refreshAccessToken,
     notifySessionLost: mocks.notifySessionLost,
+    isConnectionUnstable: () => false,
 }));
 // events는 phaser를 불러온다. 노드 환경에서는 못 불러오므로 대신한다
 vi.mock('../../events', () => ({ emit: mocks.emit }));
