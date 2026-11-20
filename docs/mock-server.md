@@ -8,7 +8,7 @@
 |---|---|---|
 | 모의 서버로 개발 | `npm run dev` (아무 설정 없이) | `/api/v1`을 모의 서버가 응답. 화면 오른쪽 아래에 "모의 서버" 조작판이 보인다 |
 | 빌드 결과 확인 | `npm run build` 뒤 `npm run preview` | 미리보기 서버에서도 모의 서버가 동작 |
-| 실제 백엔드에 연결 | `.env.local`에 `API_TARGET=http://localhost:8000` | 모의 서버가 꺼지고 Vite proxy(개발 서버가 요청을 다른 서버로 넘겨주는 기능)가 `/api`를 그 주소로 넘긴다. WebSocket도 넘긴다(`ws: true`). 조작판은 보이지 않는다 |
+| 실제 백엔드에 연결 | `.env.local`에 `API_TARGET=http://localhost:8003` | 모의 서버가 꺼지고 Vite proxy(개발 서버가 요청을 다른 서버로 넘겨주는 기능)가 `/api`를 그 주소로 넘긴다. WebSocket도 넘긴다(`ws: true`). 조작판은 보이지 않는다 |
 | 토큰 재발급 검수 | `.env.local`에 `MOCK_ACCESS_TTL_SEC=30` | 액세스 토큰이 30초 뒤 만료된다. 기본은 명세대로 3600초 |
 
 - 환경 변수의 예시는 저장소 루트의 `.env.example`에 있다. 바꾼 뒤에는 개발 서버를 다시 띄운다.

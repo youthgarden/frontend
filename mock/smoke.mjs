@@ -179,7 +179,7 @@ async function main() {
     const dash = await call('GET', '/lectures', { token });
     check('강의 대시보드 5개, 완료 0', dash.status === 200 && dash.body?.total_count === 5 && dash.body?.completed_count === 0 && dash.body?.lectures?.length === 5, dash.body);
     const l1 = await call('GET', '/lectures/1', { token });
-    check('강의 1 상세 (youtube_video_id, last_position_sec)', l1.status === 200 && l1.body?.youtube_video_id === 'aqz-KE-bpKQ' && l1.body?.last_position_sec === 0, l1.body);
+    check('강의 1 상세 (youtube_video_id, last_position_sec, task_id)', l1.status === 200 && l1.body?.task_id === 1 && l1.body?.youtube_video_id === 'aqz-KE-bpKQ' && l1.body?.last_position_sec === 0, l1.body);
     const l2 = await call('GET', '/lectures/2', { token });
     check('강의 2는 mock: 영상', l2.status === 200 && /^mock:/.test(l2.body?.youtube_video_id ?? ''), l2.body);
     const l99 = await call('GET', '/lectures/99', { token });
@@ -362,7 +362,13 @@ async function main() {
     a2.ws.close();
 
     section('로그아웃');
-    const out = await call('POST', '/auth/logout', { cookie });
+    // 갱신과 로그아웃이 겹친 경우: 쿠키의 토큰이 이미 회전됐어도 같은 로그인 세션의 새 토큰까지 폐기한다
+    const oldValue = cookie.value;
+    const rotated = await call('POST', '/auth/refresh', { cookie: { value: oldValue } });
+    const newer = refreshFrom(rotated.setCookies);
+    const out = await call('POST', '/auth/logout', { cookie: { value: oldValue } });
+    const afterNewer = await call('POST', '/auth/refresh', { cookie: { value: newer?.value } });
+    check('회전 전 토큰으로 로그아웃해도 같은 세션의 새 토큰 401', rotated.status === 200 && !!newer && afterNewer.status === 401, afterNewer);
     check('로그아웃 204, 쿠키 삭제', out.status === 204 && out.setCookies.some((c) => /refresh_token=;/.test(c) && /Max-Age=0/.test(c)), out);
     const afterOut = await call('POST', '/auth/refresh', { cookie });
     check('로그아웃한 리프레시 토큰 401', afterOut.status === 401, afterOut);

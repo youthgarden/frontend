@@ -22,6 +22,8 @@ export interface RefreshRow {
     id: number;
     user_id: number;
     token_hash: string;
+    /** 같은 로그인에서 회전된 토큰이 공유하는 세션 식별자 (ERD). 이전에 저장된 행에는 없을 수 있다 */
+    family_id?: string;
     expires_at: number;
     revoked_at: number | null;
     created_at: number;
@@ -35,6 +37,8 @@ export interface ProgressRow {
     last_position_sec: number;
     completed_at: number | null;
     updated_at: number;
+    /** 시청 시간을 여기까지 인정했다 (ERD watch_budget_used_until). 없으면 updated_at으로 본다 */
+    watch_budget_used_until?: number | null;
 }
 
 export interface MessageRow {

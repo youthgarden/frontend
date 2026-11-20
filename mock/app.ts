@@ -10,7 +10,7 @@ import type {
 } from '../src/api/types';
 import { chatReply } from './ai';
 import {
-    clearRefreshCookie, findRefresh, forceExpire, hashPassword, issueRefresh, parseCookies, refreshCookie, signAccess,
+    clearRefreshCookie, findRefresh, forceExpire, hashPassword, issueRefresh, parseCookies, refreshCookie, revokeFamily, signAccess,
     verifyAccess, verifyPassword, REFRESH_COOKIE,
 } from './auth';
 import { CRITERIA, JOBS, LECTURES, PASS_SCORE, TASKS, findLecture, findTask, type LectureDef, type TaskDef } from './content';
@@ -372,14 +372,14 @@ export class MockApp {
             return { status: 201, body };
         });
 
-        const tokenReply = (userId: number): Reply => {
+        const tokenReply = (userId: number, familyId?: string): Reply => {
             const s = this.store;
             const body: TokenResponse = {
                 access_token: signAccess(userId, s.data.epoch, this.opt.accessTtlSec),
                 token_type: 'bearer',
                 expires_in: this.opt.accessTtlSec,
             };
-            return { status: 200, body, headers: { 'Set-Cookie': refreshCookie(issueRefresh(userId, s)) } };
+            return { status: 200, body, headers: { 'Set-Cookie': refreshCookie(issueRefresh(userId, s, familyId)) } };
         };
 
         this.add('POST', '/auth/login', false, (c) => {
@@ -398,16 +398,11 @@ export class MockApp {
             const row = findRefresh(raw, this.store);
             if (!row || !this.store.user(row.user_id)) fail(401, 'INVALID_REFRESH_TOKEN');
             row.revoked_at = Date.now(); // rotation: 기존 토큰은 폐기
-            return tokenReply(row.user_id);
+            return tokenReply(row.user_id, row.family_id);
         });
 
         this.add('POST', '/auth/logout', false, (c) => {
-            const raw = parseCookies(c.req.headers.cookie)[REFRESH_COOKIE];
-            const row = findRefresh(raw, this.store);
-            if (row) {
-                row.revoked_at = Date.now();
-                this.store.touch();
-            }
+            revokeFamily(parseCookies(c.req.headers.cookie)[REFRESH_COOKIE], this.store);
             return { status: 204, headers: { 'Set-Cookie': clearRefreshCookie() } };
         });
 
@@ -442,6 +437,7 @@ export class MockApp {
                 ...this.lectureSummary(u, l),
                 youtube_video_id: l.youtube_video_id,
                 last_position_sec: this.store.progress(u.id, l.id)?.last_position_sec ?? 0,
+                task_id: TASKS.find((t) => t.lecture_id === l.id)?.id ?? null,
             };
             return { status: 200, body };
         });
@@ -482,7 +478,10 @@ export class MockApp {
                 .map(([a, b]) => [Math.min(Math.max(a, 0), d), Math.min(Math.max(b, 0), d)] as [number, number])
                 .filter(([a, b]) => b > a);
             // 2. 조작 방지: 구간 합이 (지금 − 마지막 보고) + 5초를 넘으면 초과분을 버린다. 첫 보고는 15초까지
-            let budget = first ? 15 : (now - row!.updated_at) / 1000 + 5;
+            // 5초는 보고 지연을 흡수하는 허용 오차다. 이미 인정한 시간(usedUntil)은 다시 인정하지 않아 오차가 쌓이지 않는다
+            const usedUntil = first ? now : row!.watch_budget_used_until ?? row!.updated_at;
+            const allowed = first ? 15 : Math.max(0, (now - usedUntil) / 1000 + 5);
+            let budget = allowed;
             const kept: [number, number][] = [];
             for (const [a, b] of clipped) {
                 if (budget <= 0) break;
@@ -508,6 +507,8 @@ export class MockApp {
             row.watched_sec = Math.round(merged.reduce((sum, [a, b]) => sum + (b - a), 0));
             row.last_position_sec = Math.round(Math.min(Math.max(position, 0), d));
             row.updated_at = now;
+            // 흐른 시간보다 더 인정했으면(허용 오차를 썼으면) 그만큼 기준 시각이 지금보다 앞선다
+            row.watch_budget_used_until = first ? now : Math.max(now, usedUntil + (allowed - budget) * 1000);
             let just = false;
             if (row.completed_at === null && row.watched_sec / d >= 0.8) {
                 row.completed_at = now;
