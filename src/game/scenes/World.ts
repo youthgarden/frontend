@@ -30,9 +30,9 @@ const OBJECTS: [key: string, x: number, y: number][] = [
     ['pine', 30, 70], ['tree', 80, 96], ['tree2', 236, 92], ['pine', 300, 74], ['tree', 340, 104], ['tree2', 620, 104],
     ['pine', 660, 76], ['tree', 720, 94], ['pine', 900, 72], ['tree2', 940, 100], ['bush', 270, 200], ['bush', 700, 206],
     // 광장
-    ['mainhall', 480, 7 * T], ['fountain', 480, 13.6 * T], ['plant', 418, 7 * T + 14], ['plant', 542, 7 * T + 14],
+    ['mainhall', 480, 7 * T], ['fountain', 480, 390], ['plant', 418, 7 * T + 14], ['plant', 542, 7 * T + 14],
     ['lamp', 9.4 * T, 8.6 * T], ['lamp', 20.6 * T, 8.6 * T], ['lamp', 9.4 * T, 15.6 * T], ['lamp', 20.6 * T, 15.6 * T],
-    ['bench', 11.6 * T, 13.4 * T], ['bench', 18.4 * T, 13.4 * T],
+    ['bench', 11.6 * T, 12 * T], ['bench', 18.4 * T, 12 * T],
     ['flowers', 8.6 * T, 8.4 * T], ['flowers', 21.4 * T, 8.4 * T], ['flowers', 12 * T, 16.7 * T], ['flowers', 18 * T, 16.7 * T],
     ['sign', 7.8 * T, 8.6 * T], ['sign', 22.2 * T, 8.6 * T],
     // 건물
@@ -51,10 +51,10 @@ const WALLS: [x: number, y: number, w: number, h: number][] = [
     [384, 176, 192, 48], // 본관
     [51, 240, 186, 48], // 강의실 건물
     [733, 240, 166, 48], // 시험장 건물
-    [456, 410, 48, 26], // 분수
+    [456, 365, 48, 26], // 분수
 ];
 
-const SPAWN: [number, number] = [480, 466]; // 분수 앞. 접속 시작 위치
+const SPAWN: [number, number] = [480, 440]; // 분수 앞. 접속 시작 위치
 
 // ── 건물 ── 이름표 위치와 문 앞 위치. 문 앞에서 F나 스페이스를 누르면 들어간다.
 const BUILDINGS: { place: Place; label: string; labelAt: [number, number]; door: [number, number] }[] = [
