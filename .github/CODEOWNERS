@@ -1,0 +1,24 @@
+# 경로별 담당. 이 경로를 고친 PR에는 담당자가 리뷰어로 자동 지정된다.
+# 분담의 근거와 두 쪽이 만나는 곳은 docs/ownership.md에 있다.
+# 아래에 있는 줄이 위의 줄보다 우선한다.
+
+# 공통: 모든 화면과 요청이 기대는 곳. 두 사람이 함께 본다
+*                       @autumn-scv @g0rnn
+
+# 배우는 쪽: 들어와서 강의를 듣기까지
+/src/game/              @autumn-scv
+/src/ui/auth/           @autumn-scv
+/src/ui/hud/            @autumn-scv
+/src/ui/lecture/        @autumn-scv
+/src/api/domains/auth.ts      @autumn-scv
+/src/api/domains/users.ts     @autumn-scv
+/src/api/domains/lectures.ts  @autumn-scv
+/src/api/domains/lectures.test.ts @autumn-scv
+/src/api/types/learn.ts       @autumn-scv
+
+# 검증받는 쪽: 시험을 보고 성장하기까지
+/src/ui/exam/           @g0rnn
+/src/ui/levelup/        @g0rnn
+/src/api/domains/tasks.ts     @g0rnn
+/src/api/domains/attempts.ts  @g0rnn
+/src/api/types/exam.ts        @g0rnn
