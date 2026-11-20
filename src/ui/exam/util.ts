@@ -1,5 +1,5 @@
-import { ApiError } from '../../api/client';
-import type { CriterionCode, ErrorCode } from '../../api/types';
+import { ApiError } from '../../api';
+import type { CriterionCode, ErrorCode } from '../../api';
 
 // 시험장 화면들이 함께 쓰는 작은 도우미.
 

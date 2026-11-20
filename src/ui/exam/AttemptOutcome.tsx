@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { errorMessage } from '../../api/client';
-import { api } from '../../api/endpoints';
-import type { AttemptResult, ChatMessage, ScoreItem } from '../../api/types';
+import { errorMessage } from '../../api';
+import { api } from '../../api';
+import type { AttemptResult, ChatMessage, ScoreItem } from '../../api';
 import { levelInfo } from '../../character';
 import { Button, Chip, Dialog, LevelBadge, Loading, Notice, ProgressBar } from '../kit';
 import { ChatBubble } from './ChatPane';

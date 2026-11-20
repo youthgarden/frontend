@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react';
-import { errorMessage } from '../../api/client';
-import { api } from '../../api/endpoints';
-import type { TaskSummary } from '../../api/types';
+import { useQuery } from '@tanstack/react-query';
+import { errorMessage, FRESH_ON_OPEN, queries, type TaskSummary } from '../../api';
 import { useSession } from '../../session/SessionProvider';
 import { Button, Chip, Dialog, LevelBadge, Loading, Notice } from '../kit';
 import type { TaskRef } from './util';
@@ -22,21 +20,10 @@ export function TaskList({ onPick, onOpenLecture, onBack, onClose }: {
     onClose: () => void;
 }) {
     const { me } = useSession();
-    const [tasks, setTasks] = useState<TaskSummary[] | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [tries, setTries] = useState(0);
-
-    useEffect(() => {
-        let cancelled = false;
-        setError(null);
-        api.tasks().then(
-            (list) => !cancelled && setTasks(list),
-            (e) => !cancelled && setError(errorMessage(e)),
-        );
-        return () => {
-            cancelled = true;
-        };
-    }, [tries]);
+    // 방금 강의를 듣고 왔을 수 있다. 창을 열 때마다 최신 응시 가능 여부를 받는다
+    const query = useQuery({ ...queries.tasks(), ...FRESH_ON_OPEN });
+    const tasks = query.data ?? null;
+    const error = !tasks && query.error ? errorMessage(query.error) : null;
 
     return (
         <Dialog
@@ -59,7 +46,7 @@ export function TaskList({ onPick, onOpenLecture, onBack, onClose }: {
                 </Notice>
 
                 {error && (
-                    <Notice tone="danger" action={<Button size="sm" onClick={() => setTries((n) => n + 1)}>다시 시도</Button>}>
+                    <Notice tone="danger" action={<Button size="sm" busy={query.isFetching} onClick={() => void query.refetch()}>다시 시도</Button>}>
                         과제 목록을 불러오지 못했어요. {error}
                     </Notice>
                 )}

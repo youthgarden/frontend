@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '../../api/endpoints';
+import { api } from '../../api';
 import { isCode } from './util';
 
 // 답안 자동 저장. 입력이 멈추고 3초 뒤에 저장한다. 직전에 저장한 내용과 같으면 보내지 않는다.

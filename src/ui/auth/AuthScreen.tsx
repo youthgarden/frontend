@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { ApiError, errorMessage } from '../../api/client';
-import { api } from '../../api/endpoints';
-import type { Job } from '../../api/types';
+import { ApiError, errorMessage } from '../../api';
+import { api } from '../../api';
+import type { Job } from '../../api';
 import { characterSpec } from '../../character';
 import { useSession } from '../../session/SessionProvider';
 import { HatHeads } from '../hud/HatTrack';

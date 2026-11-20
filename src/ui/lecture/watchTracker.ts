@@ -1,4 +1,4 @@
-import type { ProgressRequest, ProgressResponse } from '../../api/types';
+import type { ProgressRequest, ProgressResponse } from '../../api';
 
 // "실제로 재생된 구간"을 모아 서버에 보고한다 (명세 5절 POST /lectures/{id}/progress).
 // - 재생 중에 0.5초마다 위치를 받아(sample) 이어지는 동안은 한 구간으로 늘린다
