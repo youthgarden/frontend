@@ -1,8 +1,7 @@
 import { Scenes, type Scene } from 'phaser';
-import type { MapPlayer } from '../../api';
+import type { Dir, MapPlayer } from '../../api';
 import { characterSpec } from '../../character';
 import { CharacterView } from '../character/CharacterView';
-import { yawToDir, type Dir } from '../mapSpec';
 import type { Player } from '../player';
 import { MapPresence, PRESENCE_KEY } from './MapPresence';
 
@@ -39,7 +38,7 @@ export class RemotePlayers {
             joined: (p) => this.add(p),
             moved: (p) => {
                 const r = this.remotes.get(p.user_id);
-                if (r) Object.assign(r, { tx: p.x, ty: p.y, dir: yawToDir(p.yaw), moving: p.moving });
+                if (r) Object.assign(r, { tx: p.x, ty: p.y, dir: p.dir, moving: p.moving });
             },
             updated: (p) => this.remotes.get(p.user_id)?.view.setLevel(p.level, characterSpec(p.user_id, p.level)),
             left: (id) => this.remove(id),
@@ -75,7 +74,6 @@ export class RemotePlayers {
 
     private add(p: MapPlayer) {
         this.remove(p.user_id);
-        const dir = yawToDir(p.yaw);
         const view = new CharacterView(this.scene, {
             key: `yg-user-${p.user_id}`,
             spec: characterSpec(p.user_id, p.level),
@@ -83,11 +81,11 @@ export class RemotePlayers {
             level: p.level,
             x: p.x,
             y: p.y,
-            dir,
+            dir: p.dir,
             scale: this.scale,
         });
-        view.setMotion(p.moving, dir);
-        this.remotes.set(p.user_id, { view, tx: p.x, ty: p.y, dir, moving: p.moving });
+        view.setMotion(p.moving, p.dir);
+        this.remotes.set(p.user_id, { view, tx: p.x, ty: p.y, dir: p.dir, moving: p.moving });
     }
 
     private remove(id: number) {

@@ -4,8 +4,8 @@
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
-import type { MapPlayer, MapServerMessage } from '../src/api/types';
-import { MAP_HEIGHT, MAP_WIDTH, SPAWN, WALK_BOUNDS, dirToYaw } from '../src/game/mapSpec';
+import type { Dir, MapPlayer, MapServerMessage } from '../src/api/types';
+import { MAP_HEIGHT, MAP_WIDTH, SPAWN, WALK_BOUNDS } from '../src/game/mapSpec';
 import { verifyAccess } from './auth';
 import type { Store } from './store';
 
@@ -13,6 +13,7 @@ export const WS_PATH = '/api/v1/ws/map';
 
 const AUTH_TIMEOUT_MS = 5000;
 const MOVE_LIMIT_PER_SEC = 10;
+const DIRS: readonly Dir[] = ['up', 'down', 'left', 'right'];
 
 interface Client extends MapPlayer {
     ws: WebSocket;
@@ -37,7 +38,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), h
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 
 function publicPlayer(p: MapPlayer): MapPlayer {
-    return { user_id: p.user_id, nickname: p.nickname, level: p.level, x: Math.round(p.x), y: Math.round(p.y), yaw: p.yaw, moving: p.moving };
+    return { user_id: p.user_id, nickname: p.nickname, level: p.level, x: Math.round(p.x), y: Math.round(p.y), dir: p.dir, moving: p.moving };
 }
 
 export class MapHub {
@@ -52,7 +53,7 @@ export class MapHub {
             ...d,
             x: WALK_BOUNDS.left + ((i + 1) * (WALK_BOUNDS.right - WALK_BOUNDS.left)) / (BOT_DEFS.length + 1),
             y: rand(WALK_BOUNDS.top + 40, WALK_BOUNDS.bottom - 40),
-            yaw: dirToYaw('down'),
+            dir: 'down' as Dir,
             moving: false,
             target: null,
             waitUntil: Date.now() + rand(500, 3000),
@@ -134,31 +135,30 @@ export class MapHub {
             level: user.level,
             x: SPAWN.x,
             y: SPAWN.y,
-            yaw: dirToYaw('down'),
+            dir: 'down',
             moving: false,
             moveTimes: [],
         };
         const players = [...this.clients.values(), ...this.bots].map(publicPlayer);
         this.clients.set(user.id, client);
-        this.send(ws, { type: 'snapshot', me: { x: SPAWN.x, y: SPAWN.y, yaw: dirToYaw('down') }, players });
+        this.send(ws, { type: 'snapshot', me: { x: SPAWN.x, y: SPAWN.y, dir: 'down' }, players });
         this.broadcast({ type: 'player_joined', player: publicPlayer(client) }, user.id);
         return client;
     }
 
     private onMove(c: Client, msg: Record<string, unknown>) {
-        const { x, y, yaw, moving } = msg;
+        const { x, y, dir, moving } = msg;
         if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return;
-        // 방향각은 [-π, π) 범위의 유한한 숫자여야 한다
-        if (typeof yaw !== 'number' || !(yaw >= -Math.PI && yaw < Math.PI) || typeof moving !== 'boolean') return;
+        if (typeof dir !== 'string' || !(DIRS as readonly string[]).includes(dir) || typeof moving !== 'boolean') return;
         const now = Date.now();
         c.moveTimes = c.moveTimes.filter((t) => t > now - 1000);
         if (c.moveTimes.length >= MOVE_LIMIT_PER_SEC) return; // 초당 10번을 넘으면 버린다
         c.moveTimes.push(now);
         c.x = Math.round(clamp(x, 0, MAP_WIDTH));
         c.y = Math.round(clamp(y, 0, MAP_HEIGHT));
-        c.yaw = yaw;
+        c.dir = dir as Dir;
         c.moving = moving;
-        this.broadcast({ type: 'player_moved', user_id: c.user_id, x: c.x, y: c.y, yaw: c.yaw, moving: c.moving }, c.user_id);
+        this.broadcast({ type: 'player_moved', user_id: c.user_id, x: c.x, y: c.y, dir: c.dir, moving: c.moving }, c.user_id);
     }
 
     /** 채점으로 레벨이 바뀌면 모두에게 알린다 (명세 8절 "모두에게") */
@@ -186,10 +186,10 @@ export class MapHub {
             const dy = b.target.y - b.y;
             if (Math.abs(dx) > 1) {
                 b.x += Math.sign(dx) * Math.min(step, Math.abs(dx));
-                b.yaw = dirToYaw(dx > 0 ? 'right' : 'left');
+                b.dir = dx > 0 ? 'right' : 'left';
             } else if (Math.abs(dy) > 1) {
                 b.y += Math.sign(dy) * Math.min(step, Math.abs(dy));
-                b.yaw = dirToYaw(dy > 0 ? 'down' : 'up');
+                b.dir = dy > 0 ? 'down' : 'up';
             }
             const arrived = Math.abs(b.target.x - b.x) <= 1 && Math.abs(b.target.y - b.y) <= 1;
             b.moving = !arrived;
@@ -198,7 +198,7 @@ export class MapHub {
                 b.waitUntil = now + rand(1500, 6000);
             }
             if (this.clients.size) {
-                this.broadcast({ type: 'player_moved', user_id: b.user_id, x: Math.round(b.x), y: Math.round(b.y), yaw: b.yaw, moving: b.moving });
+                this.broadcast({ type: 'player_moved', user_id: b.user_id, x: Math.round(b.x), y: Math.round(b.y), dir: b.dir, moving: b.moving });
             }
         }
     }

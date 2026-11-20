@@ -332,7 +332,7 @@ async function main() {
     const a = await openWs();
     a.ws.send(JSON.stringify({ type: 'auth', access_token: token }));
     const snap = await waitFor(a, (c) => c.messages.find((m) => m.type === 'snapshot'));
-    check(`snapshot (me = SPAWN ${SPAWN.x},${SPAWN.y})`, snap?.me?.x === SPAWN.x && snap?.me?.y === SPAWN.y && snap?.me?.yaw === Math.PI / 2, snap?.me);
+    check(`snapshot (me = SPAWN ${SPAWN.x},${SPAWN.y})`, snap?.me?.x === SPAWN.x && snap?.me?.y === SPAWN.y && snap?.me?.dir === 'down', snap?.me);
     const bots = (snap?.players ?? []).filter((p) => p.user_id >= 9001);
     check('snapshot에 봇 4명 이상 (서로 다른 레벨)', bots.length >= 4 && new Set(bots.map((b) => b.level)).size >= 4, snap?.players);
 
@@ -341,11 +341,11 @@ async function main() {
     await waitFor(b, (c) => c.messages.find((m) => m.type === 'snapshot'));
     const joined = await waitFor(a, (c) => c.messages.find((m) => m.type === 'player_joined' && m.player?.nickname === '민재'));
     check('player_joined', !!joined && joined.player.level === 2, joined);
-    b.ws.send(JSON.stringify({ type: 'move', x: -100, y: 99999, yaw: -Math.PI, moving: true }));
+    b.ws.send(JSON.stringify({ type: 'move', x: -100, y: 99999, dir: 'left', moving: true }));
     const otherId = joined?.player?.user_id;
     const moved = await waitFor(a, (c) => c.messages.find((m) => m.type === 'player_moved' && m.user_id === otherId));
-    check('player_moved (좌표를 맵 범위로 자름)', moved?.x === 0 && moved?.y === MAP_HEIGHT && moved?.yaw === -Math.PI, moved);
-    for (let i = 0; i < 20; i++) b.ws.send(JSON.stringify({ type: 'move', x: 100 + i, y: 300, yaw: 0, moving: true }));
+    check('player_moved (좌표를 맵 범위로 자름)', moved?.x === 0 && moved?.y === MAP_HEIGHT && moved?.dir === 'left', moved);
+    for (let i = 0; i < 20; i++) b.ws.send(JSON.stringify({ type: 'move', x: 100 + i, y: 300, dir: 'right', moving: true }));
     await sleep(600);
     const burst = a.messages.filter((m) => m.type === 'player_moved' && m.user_id === otherId).length;
     check('초당 10번을 넘는 move는 버림', burst <= 10, `받은 수 ${burst}`);
