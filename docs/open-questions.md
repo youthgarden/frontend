@@ -4,6 +4,8 @@
 
 ## 맵 담당 팀원과 합의
 
+2026-11-20에 프론트엔드를 "배우는 쪽"(조가을)과 "검증받는 쪽"(김균호)으로 나눴다([분담](ownership.md)). 이 분담은 조가을 본인의 확인을 아직 거치지 않았다.
+
 | 번호 | 질문 | 지금 가정한 것 |
 |---|---|---|
 | 1 | `events.ts`에 추가한 이벤트 네 개(`player-level`, `place`, `map-connection`, `map-population`)와 `current()` 함수에 동의하는가 | "제안"으로 표시해 두고 쓰고 있다 ([ADR 0006](adr/0006-build-on-teammate-branch-and-event-contract.md)) |

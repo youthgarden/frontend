@@ -6,7 +6,7 @@
 import { api, errorMessage, isApiError } from '../../api';
 ```
 
-이 모듈은 **공통 부분**과 **분야별 부분**으로 나뉜다. 공통 부분은 누가 어떤 API를 맡든 함께 쓰고, 분야별 부분은 그 분야를 맡은 사람이 채운다. 왜 이런 구성인지는 [ADR 0009](adr/0009-api-module-own-client-and-tanstack-query.md)에 있다.
+이 모듈은 **공통 부분**과 **분야별 부분**으로 나뉜다. 공통 부분은 두 사람이 함께 쓰고, 분야별 부분은 그 분야를 맡은 사람이 채운다. 누가 무엇을 맡는지는 [분담](ownership.md)에 있다. 왜 이런 구성인지는 [ADR 0009](adr/0009-api-module-own-client-and-tanstack-query.md)에 있다.
 
 ## 구성
 
@@ -21,15 +21,19 @@ src/api/
   query/
     queryClient.ts      조회 결과 저장소의 기본값
     options.ts          조회에 덧붙이는 공통 옵션 (FRESH_ON_OPEN, NEVER_CACHE)
-  types.ts              API 명세의 응답 형식
+  types/common.ts       두 분야가 함께 쓰는 타입 (에러 코드)
   ── 분야별 ──
   domains/
-    auth.ts             인증 (명세 2절)
-    users.ts            직무, 회원 (명세 3절, 4절)
-    lectures.ts         강의 (명세 5절)
-    tasks.ts            과제 (명세 6절)
-    attempts.ts         응시 (명세 7절)
+    auth.ts             인증 (명세 2절)             배우는 쪽
+    users.ts            직무, 회원 (명세 3절, 4절)   배우는 쪽
+    lectures.ts         강의 (명세 5절)             배우는 쪽
+    tasks.ts            과제 (명세 6절)             검증받는 쪽
+    attempts.ts         응시 (명세 7절)             검증받는 쪽
+  types/
+    learn.ts            배우는 쪽의 응답 형식 (인증, 회원, 강의, 멀티플레이)
+    exam.ts             검증받는 쪽의 응답 형식 (과제, 응시)
   endpoints.ts          분야별 함수를 api 한 이름으로 모으는 줄만 있다
+  types/index.ts        타입을 한 이름으로 모으는 줄만 있다
 ```
 
 분야를 파일로 나눈 이유는 여러 사람이 동시에 일하기 때문이다. 자기 분야의 파일만 고치면 다른 사람과 같은 줄을 고칠 일이 없다.
@@ -66,9 +70,9 @@ src/api/
 
 명세에 `GET /notices`와 `POST /notices/{id}/read`가 생겼고 내가 맡았다고 하자.
 
-### 1. 응답 타입을 적는다 (`types.ts`)
+### 1. 응답 타입을 적는다 (`types/learn.ts` 또는 `types/exam.ts`)
 
-필드 이름은 명세 그대로 `snake_case`다.
+자기 분야의 타입 파일에 적는다. 필드 이름은 명세 그대로 `snake_case`다. 새 분야라면 `types/notices.ts`를 만들고 `types/index.ts`에 한 줄을 더한다.
 
 ```ts
 export interface Notice { id: number; title: string; read: boolean; created_at: string }
@@ -216,7 +220,6 @@ export const http = createClient({
 - 화면은 `src/api`(입구)에서만 가져다 쓴다. `src/api/domains/...`를 직접 가리키지 않는다. 안쪽 구조를 바꿔도 화면을 고치지 않게 하려는 것이다.
 - 분야별 파일끼리는 이름표만 가져다 쓴다. 다른 분야의 API 함수를 부르지 않는다.
 - 공통 부분(`core/`, `client.ts`, `query/`)을 고치면 모든 요청이 영향을 받는다. 고치기 전에 팀에 알리고, `npm test`가 통과하는지 확인한다.
-- `types.ts`는 지금 한 파일이다. 여러 사람이 동시에 타입을 더하면 같은 파일을 고치게 된다. 불편해지면 분야별 파일로 나눈다 (확인 필요: 지금 나눌지).
 
 ## 테스트
 

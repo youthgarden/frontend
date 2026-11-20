@@ -3,7 +3,7 @@ import { http, type RequestOptions } from '../client';
 import type { LectureDashboard, LectureDetail, ProgressRequest, ProgressResponse } from '../types';
 import { taskKeys } from './tasks';
 
-// 강의 (명세 5절). 담당자가 정해지면 이 파일을 맡는다.
+// 강의 (명세 5절). 배우는 쪽, 담당: 조가을
 // 지금 있는 조회는 여러 화면이 함께 보는 "강의 대시보드" 하나다. 나머지 조회와 변경 훅은 담당자가 필요할 때 더한다.
 
 export const lectureApi = {

@@ -38,6 +38,7 @@ docs/        계획, 의도, 판단 기록, ADR
 ```
 
 문서는 [`docs/direction/index.html`](docs/direction/index.html)(화면 정리)부터 읽는다.
+누가 무엇을 맡는지는 [`docs/ownership.md`](docs/ownership.md)에 있다.
 
 ## 작업 방식
 
